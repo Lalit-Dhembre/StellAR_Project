@@ -1,0 +1,67 @@
+# Unity
+/[Ss]tellAR-Unity/[Ll]ibrary/
+/[Ss]tellAR-Unity/[Tt]emp/
+/[Ss]tellAR-Unity/[Oo]bj/
+/[Ss]tellAR-Unity/[Bb]uild/
+/[Ss]tellAR-Unity/[Bb]uilds/
+/[Ss]tellAR-Unity/[Ll]ogs/
+/[Ss]tellAR-Unity/[Uu]serSettings/
+/[Ss]tellAR-Unity/MemoryCaptures/
+/[Ss]tellAR-Unity/Recording/
+/[Ss]tellAR-Unity/[Aa]ssets/AssetStoreTools*
+/[Ss]tellAR-Unity/*.csproj
+/[Ss]tellAR-Unity/*.unitypackage
+/[Ss]tellAR-Unity/*.sln
+/[Ss]tellAR-Unity/*.suo
+/[Ss]tellAR-Unity/*.user
+/[Ss]tellAR-Unity/*.userprefs
+/[Ss]tellAR-Unity/*.pidb
+/[Ss]tellAR-Unity/*.svd
+/[Ss]tellAR-Unity/*.pdb
+/[Ss]tellAR-Unity/*.opendb
+/[Ss]tellAR-Unity/*.IDB
+/[Ss]tellAR-Unity/ExportedObj/
+/[Ss]tellAR-Unity/.vs/
+/[Ss]tellAR-Unity/IdleRunTime*
+/[Ss]tellAR-Unity/[Aa]ssets/AddressableAssetsData/*/*.bin*
+/[Ss]tellAR-Unity/[Aa]ssets/StreamingAssets/aa.meta
+/[Ss]tellAR-Unity/[Aa]ssets/StreamingAssets/aa/*
+
+# Android
+/[Ss]tellAR-Mobile/.gradle/
+/[Ss]tellAR-Mobile/local.properties
+/[Ss]tellAR-Mobile/[Bb]uild/
+/[Ss]tellAR-Mobile/captures/
+/[Ss]tellAR-Mobile/.externalNativeBuild
+/[Ss]tellAR-Mobile/.cxx
+/[Ss]tellAR-Mobile/*.apk
+/[Ss]tellAR-Mobile/*.aar
+/[Ss]tellAR-Mobile/*.bundle
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Large binaries (general)
+*.so
+*.dylib
+*.dll
+*.o
+*.obj
+*.pdb
+*.sym
+*.dbg
+*.a
+*.lib
+*.exp
+ArtifactDB
