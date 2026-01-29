@@ -1,5 +1,0 @@
-L:/Unity/Chemistry Lab Android/unityLibrary/.cxx/Debug/4w4n236n/arm64-v8a/CMakeFiles/edit_cache.dir
-L:/Unity/Chemistry Lab Android/unityLibrary/.cxx/Debug/4w4n236n/arm64-v8a/CMakeFiles/rebuild_cache.dir
-L:/Unity/Chemistry Lab Android/unityLibrary/.cxx/Debug/4w4n236n/arm64-v8a/GameActivity/CMakeFiles/game.dir
-L:/Unity/Chemistry Lab Android/unityLibrary/.cxx/Debug/4w4n236n/arm64-v8a/GameActivity/CMakeFiles/edit_cache.dir
-L:/Unity/Chemistry Lab Android/unityLibrary/.cxx/Debug/4w4n236n/arm64-v8a/GameActivity/CMakeFiles/rebuild_cache.dir

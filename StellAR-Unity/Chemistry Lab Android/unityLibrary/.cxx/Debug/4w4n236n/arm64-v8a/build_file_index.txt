@@ -1,2 +1,0 @@
-L:\Unity\Chemistry Lab Android\unityLibrary\src\main\cpp\CMakeLists.txt
-L:\Unity\Chemistry Lab Android\unityLibrary\src\main\cpp\GameActivity\CMakeLists.txt
