@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8fe114bdaccd1642a8f2a0e4e235d97, type: 3}
+  m_Name: Silver_Nitrate
+  m_EditorClassIdentifier: ChemistryLab::ChemistryLab.Data.ChemicalData
+  chemicalName: Silver Nitrate
+  formula: AgNO3
+  molecularWeight: 169.87
+  category: 2
+  state: 3
+  color: {r: 0.9, g: 0.9, b: 0.95, a: 0.6}
+  isTransparent: 1
+  pH: 7
+  hasFlameColor: 0
+  flameColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  hazardInfo: Light sensitive, stains skin
+  isCorrosive: 0
+  isFlammable: 0
+  reactsWithWater: 0
+  icon: {fileID: 0}
+  reactionEffectPrefab: {fileID: 0}

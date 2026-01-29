@@ -1,0 +1,10 @@
+# ninja log v5
+66	13632	7912432682600912	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	f6e21d5c883b497b
+86	13645	7912432682738133	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	fc31f34c84d9023f
+103	13647	7912432682743498	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	c6b555e860fb97d6
+1	13650	7912432682793676	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	3f39f4358d0ccfbf
+26	13664	7912432683050250	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	19e748d8be82789e
+52	13820	7912432684586969	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	b8cefcb8deda7760
+39	13895	7912432685294874	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	bb763bf96732544a
+116	14185	7912432688257697	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	60d63bb973d4cb48
+14186	14390	7912432690303964	L:/Unity/Chemistry Lab Android/unityLibrary/build/intermediates/cxx/Debug/4w4n236n/obj/arm64-v8a/libgame.so	49c9ce9ac09361c7

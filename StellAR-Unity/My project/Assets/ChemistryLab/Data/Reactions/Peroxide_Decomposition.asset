@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e91eb4c8cbc9bf4683bdaf8c2dccfb5, type: 3}
+  m_Name: Peroxide_Decomposition
+  m_EditorClassIdentifier: ChemistryLab::ChemistryLab.Data.Reaction
+  reactionName: Peroxide Decomposition
+  equationText: "2H2O2 \u2192 2H2O + O2\u2191"
+  description: Hydrogen peroxide rapidly decomposes when heated, releasing oxygen
+  reactants:
+  - chemical: {fileID: 11400000, guid: 36e0da8f157e4814fb7b641078aa241f, type: 2}
+    coefficient: 1
+    moles: 1
+  - chemical: {fileID: 11400000, guid: 36e0da8f157e4814fb7b641078aa241f, type: 2}
+    coefficient: 1
+    moles: 1
+  products:
+  - chemical: {fileID: 11400000, guid: a6ab52345b36da0409aa3e8941d24727, type: 2}
+    coefficient: 1
+    moles: 1
+  minTemperature: 20
+  maxTemperature: 200
+  requiresHeat: 0
+  catalyst: {fileID: 0}
+  primaryEffect: 3
+  secondaryEffects: 
+  precipitateColor: {r: 0, g: 0, b: 0, a: 0}
+  isExothermic: 1
+  enthalpyChange: 0
+  reactionSound: {fileID: 0}

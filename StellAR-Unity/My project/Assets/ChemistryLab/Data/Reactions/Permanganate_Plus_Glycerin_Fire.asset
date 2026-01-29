@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e91eb4c8cbc9bf4683bdaf8c2dccfb5, type: 3}
+  m_Name: Permanganate_Plus_Glycerin_Fire
+  m_EditorClassIdentifier: ChemistryLab::ChemistryLab.Data.Reaction
+  reactionName: Permanganate + Glycerin Fire
+  equationText: "KMnO4 + C3H8O3 \u2192 \U0001F525"
+  description: Spontaneous combustion! The mixture catches fire after a few seconds.
+  reactants:
+  - chemical: {fileID: 11400000, guid: 488ac6eb05aaadc409028b788c914223, type: 2}
+    coefficient: 1
+    moles: 1
+  - chemical: {fileID: 11400000, guid: 36781a44970ca18419271dc5d7e25470, type: 2}
+    coefficient: 1
+    moles: 1
+  products:
+  - chemical: {fileID: 11400000, guid: a6ab52345b36da0409aa3e8941d24727, type: 2}
+    coefficient: 1
+    moles: 1
+  minTemperature: 20
+  maxTemperature: 200
+  requiresHeat: 0
+  catalyst: {fileID: 0}
+  primaryEffect: 5
+  secondaryEffects: 
+  precipitateColor: {r: 0, g: 0, b: 0, a: 0}
+  isExothermic: 1
+  enthalpyChange: 0
+  reactionSound: {fileID: 0}

@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e91eb4c8cbc9bf4683bdaf8c2dccfb5, type: 3}
+  m_Name: Neutralization
+  m_EditorClassIdentifier: ChemistryLab::ChemistryLab.Data.Reaction
+  reactionName: Neutralization
+  equationText: "HCl + NaOH \u2192 NaCl + H2O"
+  description: Acid-base neutralization producing salt and water
+  reactants:
+  - chemical: {fileID: 11400000, guid: 82caad2b752a4bd4f85715dc4e76498c, type: 2}
+    coefficient: 1
+    moles: 1
+  - chemical: {fileID: 11400000, guid: 0802f597967f10b479d6817729ea2b3c, type: 2}
+    coefficient: 1
+    moles: 1
+  products:
+  - chemical: {fileID: 11400000, guid: 6992badd4df421143b7c1b517c0a3213, type: 2}
+    coefficient: 1
+    moles: 1
+  - chemical: {fileID: 11400000, guid: a6ab52345b36da0409aa3e8941d24727, type: 2}
+    coefficient: 1
+    moles: 1
+  minTemperature: 20
+  maxTemperature: 200
+  requiresHeat: 0
+  catalyst: {fileID: 0}
+  primaryEffect: 4
+  secondaryEffects: 
+  precipitateColor: {r: 0, g: 0, b: 0, a: 0}
+  isExothermic: 1
+  enthalpyChange: 0
+  reactionSound: {fileID: 0}
