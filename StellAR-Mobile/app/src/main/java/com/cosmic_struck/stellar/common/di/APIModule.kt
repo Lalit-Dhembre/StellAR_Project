@@ -17,7 +17,7 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object APIModule {
-    val baseUrl = "http://192.168.1.3:5000"
+    val baseUrl = "https://chun-nonimpulsive-nondeficiently.ngrok-free.dev"
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
