@@ -31,7 +31,7 @@ CORS(app)
 # Configuration
 OUTPUT_DIR = "models"
 GENERATED_DIR = "generated_models"
-COMFYUI_OUTPUT_DIR = "C:/ComfyUI_windows_portable/ComfyUI/output/"
+COMFYUI_OUTPUT_DIR = "D:/Coding/ComfyUI_windows_portable/ComfyUI/output/"
 Path(OUTPUT_DIR).mkdir(exist_ok=True)
 Path(GENERATED_DIR).mkdir(exist_ok=True)
 

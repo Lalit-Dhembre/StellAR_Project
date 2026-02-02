@@ -50,7 +50,7 @@ def generate_quiz_from_text(text: str) -> List[Dict]:
 
     try:
         response = ollama.chat(
-            model='phi3:mini', 
+            model='phi4', 
             format='json', 
             messages=[
                 {
@@ -127,7 +127,7 @@ def generate_summary_from_text(text: str) -> str:
 
     try:
         response = ollama.chat(
-            model='phi3:mini', 
+            model='phi4', 
             messages=[
                 {
                     'role': 'user',

@@ -68,3 +68,9 @@ ArtifactDB
 # Remote Access
 **/*.exe
 **/ngrok_output.txt
+
+# Generated Models
+**/generated_models/
+**/temp_uploads/
+**/models/*_yolo_*.pt
+!**/models/.gitkeep
