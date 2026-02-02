@@ -1,0 +1,244 @@
+﻿Initialized native services in: C:\Users\Cosmic Chip\.gradle\native
+Initialized jansi services in: C:\Users\Cosmic Chip\.gradle\native
+The client will now receive all logging from the daemon (pid: 23692). The daemon log file: C:\Users\Cosmic Chip\.gradle\daemon\8.13\daemon-23692.out.log
+Starting 13th build in daemon [uptime: 2 hrs 51 mins 3.345 secs, performance: 99%, GC rate: 0.00/s, heap usage: 0% of 2 GiB]
+Using 12 worker leases.
+Now considering [L:\StellAR\StellAR-Mobile] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'L:\StellAR\StellAR-Mobile\settings.gradle.kts'.
+Projects loaded. Root project using build file 'L:\StellAR\StellAR-Mobile\build.gradle.kts'.
+Included projects: [root project 'StellAR', project ':app', project ':chemLab', project ':unityLibrary', project ':unityLibrary:xrmanifest.androidlib']
+
+> Configure project :
+Evaluating root project 'StellAR' using build file 'L:\StellAR\StellAR-Mobile\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.1', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.2.21', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.2.21', apply: false]
+Resolved plugin [id: 'com.google.devtools.ksp', version: '2.2.21-2.0.4', apply: false]
+Resolved plugin [id: 'com.google.dagger.hilt.android', version: '2.57.2', apply: false]
+
+> Configure project :app
+Evaluating project ':app' using build file 'L:\StellAR\StellAR-Mobile\app\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.1']
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '2.2.21']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.compose', version: '2.2.21']
+Resolved plugin [id: 'com.google.devtools.ksp', version: '2.2.21-2.0.4']
+Resolved plugin [id: 'com.google.dagger.hilt.android', version: '2.57.2']
+Resolved plugin [id: 'org.jetbrains.kotlin.plugin.serialization', version: '2.2.21']
+Using default execution profile
+Build 530f6462-4211-4786-973a-60daf7e64e4d is started
+Using Kotlin Gradle Plugin gradle813 variant
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+Detected Android Gradle Plugin compose compiler configuration
+
+> Configure project :chemLab
+Evaluating project ':chemLab' using build file 'L:\StellAR\StellAR-Mobile\chemLab\build.gradle'.
+Using default execution profile
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+C/C++: android.ndkVersion from module build.gradle is [27.2.12479018]
+C/C++: android.ndkPath from module build.gradle is C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+C/C++: ndk.dir in local.properties is not set
+C/C++: Not considering ANDROID_NDK_HOME because support was removed after deprecation period.
+C/C++: sdkFolder is C:\Users\Cosmic Chip\AppData\Local\Android\Sdk
+
+> Configure project :unityLibrary
+Evaluating project ':unityLibrary' using build file 'L:\StellAR\StellAR-Mobile\unityLibrary\build.gradle'.
+
+> Configure project :unityLibrary:xrmanifest.androidlib
+Evaluating project ':unityLibrary:xrmanifest.androidlib' using build file 'L:\StellAR\StellAR-Mobile\unityLibrary\xrmanifest.androidlib\build.gradle'.
+Using default execution profile
+All projects evaluated.
+Task path ':chemLab:buildIl2Cpp' matched project ':chemLab'
+Task name matched 'buildIl2Cpp'
+Selected primary task 'buildIl2Cpp' from project :chemLab
+Tasks to be executed: [task ':chemLab:buildIl2Cpp']
+Tasks that were excluded: []
+Resolve mutations for :chemLab:buildIl2Cpp (Thread[#1726,Execution worker,5,main]) started.
+:chemLab:buildIl2Cpp (Thread[#1726,Execution worker,5,main]) started.
+
+> Task :chemLab:buildIl2Cpp FAILED
+Custom actions are attached to task ':chemLab:buildIl2Cpp'.
+Caching disabled for task ':chemLab:buildIl2Cpp' because:
+  Build cache is disabled
+  Gradle would require more information to cache this task
+Task ':chemLab:buildIl2Cpp' is not up-to-date because:
+  One or more additional actions for task ':chemLab:buildIl2Cpp' have changed.
+Starting process 'command 'L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/IL2CPP/build/deploy/il2cpp.exe''. Working directory: L:\StellAR\StellAR-Mobile\chemLab Command: L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/IL2CPP/build/deploy/il2cpp.exe --compile-cpp --platform=Android --architecture=arm64 --outputpath=L:/StellAR/StellAR-Mobile/chemLab/src/main/jniLibs/arm64-v8a/libil2cpp.so --baselib-directory=L:/StellAR/StellAR-Mobile/chemLab/src/main/jniStaticLibs/arm64-v8a --configuration=Release --dotnetprofile=unityaot-linux --usymtool-path=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/usymtool.exe --profiler-report --profiler-output-file=L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_conv.traceevents --print-command-line --static-lib-il2-cpp --data-folder=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/Source/il2cppOutput/data --generatedcppdir=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/Source/il2cppOutput --cachedirectory=L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache --tool-chain-path=C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+Successfully started process 'command 'L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/IL2CPP/build/deploy/il2cpp.exe''
+L:\StellAR\StellAR-Mobile\chemLab\src\main\Il2CppOutputProject\IL2CPP\build\deploy\il2cpp.exe --compile-cpp --platform=Android --architecture=arm64 --outputpath=L:/StellAR/StellAR-Mobile/chemLab/src/main/jniLibs/arm64-v8a/libil2cpp.so --baselib-directory=L:/StellAR/StellAR-Mobile/chemLab/src/main/jniStaticLibs/arm64-v8a --configuration=Release --dotnetprofile=unityaot-linux --usymtool-path=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/usymtool.exe --profiler-report --profiler-output-file=L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_conv.traceevents --print-command-line --static-lib-il2-cpp --data-folder=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/Source/il2cppOutput/data --generatedcppdir=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProject/Source/il2cppOutput --cachedirectory=L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache --tool-chain-path=C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+Starting: L:\StellAR\StellAR-Mobile\chemLab\src\main\Il2CppOutputProject\IL2CPP\build\deploy\bee_backend\win-x64\bee_backend.exe --verbose --threads=12 --ipc --dagfile="L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache/buildstate/bee.dag" --continue-on-failure --profile="L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache/buildstate/backend1.traceevents" FinalProgram
+WorkingDir: L:/StellAR/StellAR-Mobile/chemLab
+bee_backend: error: Failed to open file "L:/AR_EDUCATION/New folder/StellAR/Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache/buildstate/tundra.log.json" for structured logging
+ExitCode: 2 Duration: 0s25ms
+Failed: 
+Error: Internal build system error. Read the full binlog without getting a BuildFinishedMessage.
+The backend process appears to still be running.
+
+Unity.IL2CPP.Compile.CompileFailedException: Failed: 
+Error: Internal build system error. Read the full binlog without getting a BuildFinishedMessage.
+The backend process appears to still be running.
+
+   at Unity.IL2CPP.Compile.CompilationDriver.Run(TinyProfiler2 tinyProfiler, Il2CppCommandLineArguments il2CppCommandLineArguments, String il2CppInvocationString, String directoryHoldingIl2Cpp, String distributionDirectory)
+   at Program.<Main>$(String[] args)
+
+
+Error: il2cpp.Compilation.BuilderFailedException: Build failed :
+ Starting: L:\StellAR\StellAR-Mobile\chemLab\src\main\Il2CppOutputProject\IL2CPP\build\deploy\bee_backend\win-x64\bee_backend.exe --verbose --threads=12 --ipc --dagfile="L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache/buildstate/bee.dag" --continue-on-failure --profile="L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache/buildstate/backend1.traceevents" FinalProgram
+WorkingDir: L:/StellAR/StellAR-Mobile/chemLab
+ExitCode: 2 Duration: 0s25ms
+Failed: 
+Error: Internal build system error. Read the full binlog without getting a BuildFinishedMessage.
+The backend process appears to still be running.
+
+Unity.IL2CPP.Compile.CompileFailedException: Failed: 
+Error: Internal build system error. Read the full binlog without getting a BuildFinishedMessage.
+The backend process appears to still be running.
+
+   at Unity.IL2CPP.Compile.CompilationDriver.Run(TinyProfiler2 tinyProfiler, Il2CppCommandLineArguments il2CppCommandLineArguments, String il2CppInvocationString, String directoryHoldingIl2Cpp, String distributionDirectory)
+   at Program.<Main>$(String[] args)
+
+
+bee_backend: error: Failed to open file "L:/AR_EDUCATION/New folder/StellAR/Mobile/chemLab/build/il2cpp_arm64-v8a_Release/il2cpp_cache/buildstate/tundra.log.json" for structured logging
+
+
+   at il2cpp.Compilation.CompilationDriver.RunOutOfProcess(TinyProfiler2, Il2CppCommandLineArguments) + 0x461
+   at il2cpp.Program.DoRun(TinyProfiler2, String[], Il2CppCommandLineArguments, Boolean) + 0x164
+
+
+Build 530f6462-4211-4786-973a-60daf7e64e4d is closed
+
+[Incubating] Problems report is available at: file:///L:/StellAR/StellAR-Mobile/build/reports/problems/problems-report.html
+.\gradlew.bat : 
+At line:1 char:1
++ .\gradlew.bat :chemLab:buildIl2Cpp --info 2>&1 | 
+Out-File -FilePath " ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) 
+    [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+FAILURE: Build failed with an exception.
+
+* Where:
+Build file 
+'L:\StellAR\StellAR-Mobile\chemLab\build.gradle' 
+line: 204
+
+* What went wrong:
+Execution failed for task ':chemLab:buildIl2Cpp'.
+> Command execution failed with exit code: 4
+  Working Directory: L:/StellAR/StellAR-Mobile/chemLab
+  Environment Variables:
+   - ANDROID_SDK_ROOT = 
+C:/Users/COSMIC~1/AppData/Local/Android/Sdk
+   - ANDROID_NDK_ROOT = C:/Progra~1/Unity/Hub/Editor/6
+000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/N
+DK
+   - NDK_ROOT = C:/Progra~1/Unity/Hub/Editor/6000.2.13
+f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK
+   - ANDROID_NDK_HOME = C:/Progra~1/Unity/Hub/Editor/6
+000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/N
+DK
+  Command Line:
+  L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOut
+putProject/IL2CPP/build/deploy/il2cpp.exe 
+--compile-cpp --platform=Android --architecture=arm64 
+--outputpath=L:/StellAR/StellAR-Mobile/chemLab/src/mai
+n/jniLibs/arm64-v8a/libil2cpp.so --baselib-directory=L
+:/StellAR/StellAR-Mobile/chemLab/src/main/jniStaticLib
+s/arm64-v8a --configuration=Release 
+--dotnetprofile=unityaot-linux --usymtool-path=L:/Stel
+lAR/StellAR-Mobile/chemLab/src/main/Il2CppOutputProjec
+t/usymtool.exe --profiler-report --profiler-output-fil
+e=L:/StellAR/StellAR-Mobile/chemLab/build/il2cpp_arm64
+-v8a_Release/il2cpp_conv.traceevents 
+--print-command-line --static-lib-il2-cpp --data-folde
+r=L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOut
+putProject/Source/il2cppOutput/data --generatedcppdir=
+L:/StellAR/StellAR-Mobile/chemLab/src/main/Il2CppOutpu
+tProject/Source/il2cppOutput --cachedirectory=L:/Stell
+AR/StellAR-Mobile/chemLab/build/il2cpp_arm64-v8a_Relea
+se/il2cpp_cache --tool-chain-path=C:/Progra~1/Unity/Hu
+b/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/Andro
+idPlayer/NDK
+
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1s
+1 actionable task: 1 executed
+Watched directory hierarchies: [L:\StellAR\StellAR-Mobile]
