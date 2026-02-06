@@ -50,7 +50,7 @@ echo.
 :: 4. Start Server
 echo.
 echo [INFO] Starting Python Server (port 5000)...
-start "StellAR Backend" cmd /k "python app.py"
+start "StellAR Backend" cmd /k "call venv\Scripts\activate.bat && python app.py"
 
 :: 5. Start Tunnel
 echo [INFO] Starting Ngrok Tunnel...

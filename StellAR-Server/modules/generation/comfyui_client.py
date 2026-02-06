@@ -65,6 +65,22 @@ class ComfyUIClient:
         while time.time() - start_time < timeout:
             files = glob.glob(target_file_pattern)
             
+            # DEBUG: Print everything in the directory to see what's happening
+            target_dir = os.path.dirname(target_file_pattern)
+            if os.path.exists(target_dir):
+                 all_files = glob.glob(os.path.join(target_dir, "*"))
+                 # Only print every 10 seconds to avoid spam
+                 elapsed = int(time.time() - start_time)
+                 if elapsed % 10 == 0:
+                     print(f"[DEBUG] Polling: Found {len(all_files)} files in {target_dir}. Looking for: {os.path.basename(target_file_pattern)}")
+                     # Optional: Print latest modified file to see if anything is being written
+                     if all_files:
+                         latest_file = max(all_files, key=os.path.getctime)
+                         print(f"[DEBUG] Latest file: {os.path.basename(latest_file)}")
+            else:
+                 print(f"[DEBUG] CRITICAL: Output directory does not exist: {target_dir}")
+            
+            
             if files:
                 file_path = files[0]
                 print(f"✓ File found: {os.path.basename(file_path)}")

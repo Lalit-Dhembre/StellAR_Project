@@ -48,7 +48,7 @@ def generate_info_batch(keywords: Union[str, List[str]]) -> List[Dict]:
 
             # Call Ollama with format='json'
             response = ollama.chat(
-                model='phi3:mini', 
+                model='phi4', 
                 format='json', 
                 messages=[
                     {

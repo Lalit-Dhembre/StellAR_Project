@@ -276,7 +276,7 @@ Instructions:
 
     try:
         response = ollama.chat(
-            model='phi3:mini',
+            model='phi4',
             messages=[
                 {
                     'role': 'user',

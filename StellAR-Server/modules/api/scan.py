@@ -9,7 +9,7 @@ from flask import current_app
 from modules.api.llm_response import generate_info_internal
 
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "starcoder2:3b"
+OLLAMA_MODEL = "phi4"
 
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
 
@@ -19,37 +19,60 @@ def scan_image():
     """
     Upload an image -> Detect Planets -> Generate Info via LLM for ALL detections -> Return Combined Data
     """
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-        
-    # Access detector from app config/context
-    detector = current_app.planet_detector
-    
-    if not detector:
-        return jsonify({'error': 'Detection system not initialized'}), 500
-        
-    # Save temp file
-    temp_id = str(uuid.uuid4())
-    output_dir = current_app.config.get('OUTPUT_DIR', 'temp_uploads') 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        
-    temp_path = os.path.join(output_dir, f"temp_scan_{temp_id}.png")
-    file.save(temp_path)
+    print("\n" + "="*50, flush=True) 
+    print("[DEBUG] RECEIVED REQUEST: /api/scan", flush=True)
+    temp_path = None
     
     try:
+        print(f"[DEBUG] Request Headers: {request.headers}", flush=True)
+        
+        if 'file' not in request.files:
+            print("[DEBUG] ERROR: No file part in request", flush=True)
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        print(f"[DEBUG] File Filename: '{file.filename}'", flush=True)
+        
+        if file.filename == '':
+            print("[DEBUG] ERROR: Empty filename", flush=True)
+            return jsonify({'error': 'No file selected'}), 400
+            
+        # Access detector from app config/context
+        detector = current_app.planet_detector
+        
+        if not detector:
+            print("[DEBUG] ERROR: Detection system not initialized", flush=True)
+            return jsonify({'error': 'Detection system not initialized'}), 500
+            
+        # Save temp file
+        temp_id = str(uuid.uuid4())
+        output_dir = current_app.config.get('OUTPUT_DIR', 'temp_uploads') 
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        temp_path = os.path.join(output_dir, f"temp_scan_{temp_id}.png")
+        file.save(temp_path)
+        
         # 1. Run detection
+        print(f"[DEBUG] Saving temp file to: {temp_path}", flush=True)
+        print("[DEBUG] Starting PLANET DETECTION...", flush=True)
+        
+        # Check if file exists and has size
+        if os.path.exists(temp_path):
+             print(f"[DEBUG] File size: {os.path.getsize(temp_path)} bytes", flush=True)
+        else:
+             print("[DEBUG] ERROR: File was not saved correctly!", flush=True)
+             
         result = detector.detect_and_classify_planets(temp_path)
+        print(f"[DEBUG] Detection Raw Result: {result}", flush=True)
         
         # Cleanup immediately
         if os.path.exists(temp_path):
             os.remove(temp_path)
+            temp_path = None # Reset so finally doesn't try to delete again
             
         if 'error' in result:
+            print(f"[DEBUG] Detection returned error: {result['error']}", flush=True)
             return jsonify({'error': result['error']}), 500
             
         # 2. Process detections
@@ -99,12 +122,20 @@ def scan_image():
             'info': llm_info,  # Now returns array of info objects
             'count': len(detections)
         }
-        print(response_data)
+        print(f"[DEBUG] Success! Response: {response_data}", flush=True)
         
         return jsonify(response_data), 200
         
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        print(f"Scan Error: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"[DEBUG] CRITICAL ERROR in /api/scan: {e}", flush=True)
         return jsonify({'error': str(e)}), 500
+        
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+                print("[DEBUG] Cleaned up temp file in finally block", flush=True)
+            except Exception as cleanup_img:
+                print(f"[DEBUG] Warning: Failed to cleanup temp file: {cleanup_img}", flush=True)
