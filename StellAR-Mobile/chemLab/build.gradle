@@ -201,6 +201,6 @@ def execCommand(String workDir, List<String> command, Map<String, String> env = 
             error.append(" - ${key} = ${value}\n")
         }
         error.append("Command Line:\n${command.join(' ')}\n");
-        throw new org.gradle.api.GradleException(error.toString())
+        throw new RuntimeException(error.toString())
     }
 }

@@ -6,8 +6,8 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import androidx.navigation.navigation
-import com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanResultsScreen
-import com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextScreen
+import com.cosmic_struck.stellar.stellar.scantext.presentation.screens.ScanResultsScreen
+import com.cosmic_struck.stellar.stellar.scantext.presentation.screens.ScanTextScreen
 import com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel
 
 fun NavGraphBuilder.scanImageGraph(navHostController: NavHostController){

@@ -9,10 +9,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 import com.cosmic_struck.stellar.common.util.Resource
+import com.cosmic_struck.stellar.home.domain.usecases.CreateClassroomUseCase
 import com.cosmic_struck.stellar.home.domain.usecases.GetUserCreatedClassroom
 import com.cosmic_struck.stellar.home.domain.usecases.GetUserJoinedClassroomsUseCase
 import com.cosmic_struck.stellar.home.domain.usecases.GetUserProfileUseCase
 import com.cosmic_struck.stellar.home.domain.usecases.JoinClassroomUseCase
+import com.cosmic_struck.stellar.home.presentation.ClassroomCreateStatus
 import com.cosmic_struck.stellar.home.presentation.ClassroomJoinStatus
 import com.cosmic_struck.stellar.home.presentation.HomeScreenState
 import com.cosmic_struck.stellar.home.presentation.Options
@@ -32,6 +34,7 @@ class HomeScreenViewModel @Inject constructor(
     private val getUserJoinedClassroomsUseCase: GetUserJoinedClassroomsUseCase,
     private val getUserProfileUseCase: GetUserProfileUseCase,
     private val joinClassroomUseCase: JoinClassroomUseCase,
+    private val createClassroomUseCase: CreateClassroomUseCase,
     private val supabaseClient: SupabaseClient,
     private val savedStateHandle: SavedStateHandle,
     private val getUserCreatedClassroom: GetUserCreatedClassroom,
@@ -89,6 +92,70 @@ class HomeScreenViewModel @Inject constructor(
                             classroomJoinStatus = if(it.data != null) ClassroomJoinStatus.JOINED else ClassroomJoinStatus.ERROR
                         )
                         getJoinedClassrooms()
+                    }
+                }
+            }
+        }
+    }
+
+    // ================================
+    // CREATE CLASSROOM METHODS
+    // ================================
+
+    fun changeCreateClassroomModalState() {
+        _state.value = _state.value.copy(
+            createClassroomModalState = !_state.value.createClassroomModalState
+        )
+    }
+
+    fun setClassroomName(name: String) {
+        _state.value = _state.value.copy(classroomNameText = name)
+    }
+
+    fun toggleCreateClassroomStatus() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(
+                classroomCreateStatus = ClassroomCreateStatus.NOT_CREATED
+            )
+        }
+    }
+
+    fun createClassroom() {
+        viewModelScope.launch {
+            val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+            val classroomName = state.value.classroomNameText.trim()
+            
+            if (classroomName.isEmpty()) {
+                _state.value = _state.value.copy(
+                    classroomCreateStatus = ClassroomCreateStatus.ERROR,
+                    error = "Classroom name cannot be empty"
+                )
+                return@launch
+            }
+
+            createClassroomUseCase(userId, classroomName).collect {
+                when (it) {
+                    is Resource.Loading<*> -> _state.value = _state.value.copy(
+                        isLoading = true,
+                        classroomCreateStatus = ClassroomCreateStatus.CREATING
+                    )
+
+                    is Resource.Error<*> -> {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = it.message,
+                            classroomCreateStatus = ClassroomCreateStatus.ERROR
+                        )
+                        Log.d("HOME SCREEN VIEWMODEL", "Create classroom error: ${it.message}")
+                    }
+
+                    is Resource.Success<*> -> {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            classroomCreateStatus = if (it.data != null) ClassroomCreateStatus.CREATED else ClassroomCreateStatus.ERROR,
+                            classroomNameText = "" // Clear the input
+                        )
+                        getJoinedClassrooms() // Refresh the list
                     }
                 }
             }
