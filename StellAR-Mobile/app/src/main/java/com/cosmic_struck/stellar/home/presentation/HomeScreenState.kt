@@ -15,6 +15,10 @@ data class HomeScreenState(
     val profile: String = "",
     val classroomJoinStatus: ClassroomJoinStatus = ClassroomJoinStatus.NOT_JOINED,
     val userCreatedClassrooms: List<JoinedClassroom> = emptyList(),
+    // Create Classroom State
+    val createClassroomModalState: Boolean = false,
+    val classroomNameText: String = "",
+    val classroomCreateStatus: ClassroomCreateStatus = ClassroomCreateStatus.NOT_CREATED,
 )
 
 enum class ClassroomJoinStatus(){
@@ -23,7 +27,15 @@ enum class ClassroomJoinStatus(){
     ERROR
 }
 
+enum class ClassroomCreateStatus(){
+    NOT_CREATED,
+    CREATING,
+    CREATED,
+    ERROR
+}
+
 enum class Options(){
     MODULES,
     CLASSROOM
 }
+

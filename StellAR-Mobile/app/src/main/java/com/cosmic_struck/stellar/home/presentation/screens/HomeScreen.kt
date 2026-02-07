@@ -38,9 +38,11 @@ import com.cosmic_struck.stellar.common.components.FABItem
 import com.cosmic_struck.stellar.common.components.TabSwitcher
 import com.cosmic_struck.stellar.common.util.Rajdhani
 import com.cosmic_struck.stellar.common.util.gridList
+import com.cosmic_struck.stellar.home.presentation.ClassroomCreateStatus
 import com.cosmic_struck.stellar.home.presentation.ClassroomJoinStatus
 import com.cosmic_struck.stellar.home.presentation.Options
 import com.cosmic_struck.stellar.home.presentation.components.ClassroomCard
+import com.cosmic_struck.stellar.home.presentation.components.CreateClassroomBottomSheet
 import com.cosmic_struck.stellar.home.presentation.components.GridItem
 import com.cosmic_struck.stellar.home.presentation.components.JoinClassroomBottomSheet
 import com.cosmic_struck.stellar.home.presentation.components.UserTopBar
@@ -85,7 +87,7 @@ fun HomeScreen(
                     onItemClick = { item ->
                         when (item.text) {
                             "Join Classroom" -> viewModel.changeModalSheetState()
-                            "Add Classroom" -> {}
+                            "Add Classroom" -> viewModel.changeCreateClassroomModalState()
                         }
                     }
                 )
@@ -101,13 +103,22 @@ fun HomeScreen(
         }
     ) { paddingValues ->
 
-        // Toast handling
+        // Toast handling for Join Classroom
         if (state.classroomJoinStatus == ClassroomJoinStatus.JOINED) {
             Toast.makeText(context, "✅ Joined Classroom Successfully", Toast.LENGTH_SHORT).show()
             viewModel.toggleJoinClassroomStatus()
         } else if (state.classroomJoinStatus == ClassroomJoinStatus.ERROR) {
             Toast.makeText(context, "❌ Error Joining Classroom", Toast.LENGTH_SHORT).show()
             viewModel.toggleJoinClassroomStatus()
+        }
+
+        // Toast handling for Create Classroom
+        if (state.classroomCreateStatus == ClassroomCreateStatus.CREATED) {
+            Toast.makeText(context, "✅ Classroom Created Successfully", Toast.LENGTH_SHORT).show()
+            viewModel.toggleCreateClassroomStatus()
+        } else if (state.classroomCreateStatus == ClassroomCreateStatus.ERROR) {
+            Toast.makeText(context, "❌ Error Creating Classroom", Toast.LENGTH_SHORT).show()
+            viewModel.toggleCreateClassroomStatus()
         }
 
         Box(
@@ -229,6 +240,16 @@ fun HomeScreen(
                 codeText = state.codeText,
                 onDismiss = viewModel::changeModalSheetState,
                 onSubmit = viewModel::joinClassroom
+            )
+
+            // Bottom sheet for creating classroom
+            CreateClassroomBottomSheet(
+                modalSheetState = state.createClassroomModalState,
+                onValueChange = viewModel::setClassroomName,
+                classroomNameText = state.classroomNameText,
+                onDismiss = viewModel::changeCreateClassroomModalState,
+                onSubmit = viewModel::createClassroom,
+                isLoading = state.classroomCreateStatus == ClassroomCreateStatus.CREATING
             )
         }
     }

@@ -1,6 +1,7 @@
-package com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen
+package com.cosmic_struck.stellar.stellar.scantext.presentation.screens
 
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import com.cosmic_struck.stellar.stellar.scantext.presentation.components.Camera
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.RectangleFrame
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.ScanButtonScanText
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.TopBarScanTextBook
+import com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel
 import com.cosmic_struck.stellar.ui.theme.Blue4
 import com.cosmic_struck.stellar.ui.theme.Blue5
 
@@ -35,6 +37,12 @@ fun ScanTextScreen(
 
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(state.isError) {
+        if (state.isError.isNotBlank()) {
+            Toast.makeText(context, state.isError, Toast.LENGTH_LONG).show()
+        }
+    }
     Scaffold(
         modifier = Modifier
             .background(

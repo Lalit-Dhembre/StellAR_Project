@@ -1,4 +1,4 @@
-package com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen
+package com.cosmic_struck.stellar.stellar.scantext.presentation.screens
 
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
@@ -6,11 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -21,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cosmic_struck.stellar.common.components.StellarScaffold
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.ScanCard
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.TopBarScanTextBook
+import com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel
 
 @Composable
 fun ScanResultsScreen(
