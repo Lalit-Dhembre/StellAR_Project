@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.graphics.Color.TRANSPARENT
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -18,16 +17,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.navigation.compose.rememberNavController
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import com.cosmic_struck.stellar.common.di.SupabaseModule
 import com.cosmic_struck.stellar.common.navigation.MainNavGraph
-import com.cosmic_struck.stellar.common.work.CleanupWorker
 import com.cosmic_struck.stellar.common.util.OnboardingManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.Box
@@ -38,15 +29,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import com.cosmic_struck.stellar.ui.theme.StellARTheme
 import dagger.hilt.android.AndroidEntryPoint
-import io.github.jan.supabase.SupabaseClient
-import java.io.File
+import io.appwrite.services.Account
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private var sessionDirectory: File? = null
     @Inject
-    lateinit var supabaseClient: SupabaseClient
+    lateinit var account: Account
     @Inject
     lateinit var onboardingManager: OnboardingManager
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,7 +54,7 @@ class MainActivity : ComponentActivity() {
 
                 if (onboardingCompleted != null) {
                     MainNavGraph(
-                        supabase = supabaseClient,
+                        account = account,
                         navHostController = navHostController,
                         onboardingCompleted = onboardingCompleted!!
                     )

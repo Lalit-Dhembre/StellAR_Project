@@ -8,8 +8,7 @@ import com.cosmic_struck.stellar.classroom.domain.usecase.GetClassroomModelsUseC
 import com.cosmic_struck.stellar.classroom.presentation.viewmodel.ClassroomHomeScreenState
 import com.cosmic_struck.stellar.classroom.presentation.viewmodel.Options
 import com.cosmic_struck.stellar.common.util.Resource
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
+import io.appwrite.services.Account
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +18,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class ClassroomHomeScreenDelegate @Inject constructor(
-    private val supabaseClient: SupabaseClient,
+    private val account: Account,
     private val getClassroomDetailsUseCase: GetClassroomDetailsUseCase,
     private val getClassroomMembersUseCase: GetClassroomMembersUseCase,
     private val getClassroomModelsUseCase: GetClassroomModelsUseCase,
@@ -57,7 +56,7 @@ class ClassroomHomeScreenDelegate @Inject constructor(
 
 
     private suspend fun fetchDetails(id: String) {
-        val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+        val userId = account.get().id
         getClassroomDetailsUseCase(id).collect { resource ->
             _state.update {
                 when (resource) {

@@ -3,20 +3,14 @@ package com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cosmic_struck.stellar.common.util.GetImageFromKeyword
 import com.cosmic_struck.stellar.common.util.Resource
-import com.cosmic_struck.stellar.stellar.scantext.domain.usecase.ImageUploadUseCase
+import com.cosmic_struck.stellar.stellar.scantext.domain.usecase.PdfUploadUseCase
+import com.cosmic_struck.stellar.stellar.scantext.domain.usecase.PollJobStatusUseCase
 import com.cosmic_struck.stellar.stellar.scantext.presentation.viewmodel.ScanImageScreenState
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognizer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,166 +19,176 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
-import java.util.Collections.emptyList
 import javax.inject.Inject
 
 @HiltViewModel
 class ScanTextViewModel @Inject constructor(
-    private val getImageFromKeyword: GetImageFromKeyword,
-    private val imageUploadUseCase: ImageUploadUseCase,
-    private val textRecognizer: TextRecognizer,
+    private val pdfUploadUseCase: PdfUploadUseCase,
+    private val pollJobStatusUseCase: PollJobStatusUseCase,
     private val application: Application
 ) : ViewModel() {
 
-    // Change from mutableStateOf to MutableStateFlow for proper reactive updates
     private val _state = MutableStateFlow(ScanImageScreenState())
     val state: StateFlow<ScanImageScreenState> = _state.asStateFlow()
 
-    private val _imageUrls = MutableStateFlow<List<String>>(emptyList())
-    val imageUrls: StateFlow<List<String>> = _imageUrls.asStateFlow()
-
-    fun captureImage(
-        context: Context,
-        imageCapture: ImageCapture,
-        onImageCaptured: (File) -> Unit
-    ) {
-        val photoFile = File(
-            context.cacheDir,
-            "scan_${System.currentTimeMillis()}.jpg"
-        )
-
-        val outputOptions =
-            ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
-        imageCapture.takePicture(
-            outputOptions,
-            ContextCompat.getMainExecutor(context),
-            object : ImageCapture.OnImageSavedCallback {
-
-                override fun onImageSaved(
-                    outputFileResults: ImageCapture.OutputFileResults
-                ) {
-                    onImageCaptured(photoFile)
-                }
-
-                override fun onError(exception: ImageCaptureException) {
-                    Log.e("CameraX", "Capture failed", exception)
-                }
-            }
+    /**
+     * Called when user selects a PDF from the file picker.
+     */
+    fun onPdfSelected(uri: Uri, context: Context) {
+        val fileName = getFileName(uri, context) ?: "document.pdf"
+        Log.d("ScanTextViewModel", "PDF selected: $fileName")
+        _state.value = _state.value.copy(
+            selectedPdfUri = uri,
+            selectedPdfName = fileName,
+            isError = ""
         )
     }
 
-    fun resetState() {
-        Log.d("RESET_STATE", "Resetting view model state - STACK TRACE:")
-        Log.d("RESET_STATE", Log.getStackTraceString(Exception()))
-        _state.value = ScanImageScreenState()
-        _imageUrls.value = emptyList()
+    /**
+     * Set the expected domain (Physics, Chemistry, Biology, Space)
+     */
+    fun setDomain(domain: String) {
+        _state.value = _state.value.copy(domain = domain)
     }
 
-    // Get current scan results (for ScanResultsScreen to read)
-    fun getCurrentScanResults() = _state.value.scanResults
-    fun getCurrentImageUrls() = _imageUrls.value
+    /**
+     * Upload the selected PDF to the server for processing.
+     * Triggers the full 5-phase pipeline.
+     */
+    fun uploadPdf(context: Context) {
+        val uri = _state.value.selectedPdfUri ?: run {
+            _state.value = _state.value.copy(isError = "No PDF selected")
+            return
+        }
 
-    private fun getImagesUrl() {
         viewModelScope.launch {
             try {
-                val detections = state.value.scanResults?.detections
-                val urls = mutableListOf<String>()
-
-                for (detection in detections ?: emptyList()) {
-                    val keyword = detection.name
-                    Log.d("IMAGE_URL", "Fetching image for: $keyword")
-
-                    val imageUrl = getImageFromKeyword.getImageUrl(keyword)
-                    if (imageUrl != null) {
-                        urls.add(imageUrl)
-                        Log.d("IMAGE_URL", "Found: $imageUrl")
-                    } else {
-                        Log.d("IMAGE_URL", "No image found for: $keyword")
-                        urls.add("")
-                    }
+                // Copy PDF from content URI to a temp file
+                val tempFile = copyUriToTempFile(uri, context) ?: run {
+                    _state.value = _state.value.copy(isError = "Failed to read the PDF file")
+                    return@launch
                 }
 
-                _imageUrls.value = urls
-                Log.d("IMAGE_URL_COMPLETE", urls.toString())
+                // Build multipart request
+                val requestBody = tempFile.asRequestBody("application/pdf".toMediaTypeOrNull())
+                val filePart = MultipartBody.Part.createFormData(
+                    "file",
+                    _state.value.selectedPdfName ?: "document.pdf",
+                    requestBody
+                )
+                val domainPart = _state.value.domain
+                    .toRequestBody("text/plain".toMediaTypeOrNull())
 
-                // Now that images are fetched, mark as ready for navigation
-                _state.value = _state.value.copy(switchToResults = true)
-                Log.d("READY_FOR_RESULTS", "Navigation ready")
+                Log.d("ScanTextViewModel", "Uploading PDF: ${_state.value.selectedPdfName}")
 
-            } catch (e: Exception) {
-                Log.e("IMAGE_URL_ERROR", "Error fetching images", e)
-                _imageUrls.value = emptyList()
-                // Still allow navigation even if images failed
-                _state.value = _state.value.copy(switchToResults = true)
-            }
-        }
-    }
-
-    fun uploadImage(file: File) {
-        val image = InputImage.fromFilePath(
-            application,
-            Uri.fromFile(file)
-        )
-
-        textRecognizer.process(image)
-            .addOnSuccessListener { it ->
-                val extractedText = it.text
-                val count = it.textBlocks.size
-                Log.d("EXTRACTED TEXT", extractedText)
-            }
-            .addOnFailureListener { e ->
-                Log.d("FAILURE EXTRACTION", e.localizedMessage ?: "Unknown error occurred")
-            }
-
-        val requestBody =
-            file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-
-        val multipart =
-            MultipartBody.Part.createFormData(
-                "file",
-                file.name,
-                requestBody
-            )
-        Log.d("VIEWMODEL", multipart.toString())
-
-        viewModelScope.launch {
-            imageUploadUseCase.invoke(multipart).collect { result ->
-                when (result) {
-                    is Resource.Loading<*> -> {
-                        _state.value = _state.value.copy(
-                            isLoading = true
-                        )
-                        Log.d("VIEWMODEL", "LOADING")
-                    }
-                    is Resource.Error<*> -> {
-                        _state.value = _state.value.copy(
-                            isError = result.message ?: "Unknown error occurred",
-                            isLoading = false
-                        )
-                        Log.d("VIEWMODEL_ERROR", _state.value.isError)
-                    }
-                    is Resource.Success<*> -> {
-                        result.data?.let {
-                            Log.d("SCAN RESULTS FROM VIEWMODEL", it.toString())
-
-                            // Update state with new data (NOT switchToResults yet)
+                // Execute upload
+                pdfUploadUseCase.invoke(filePart, domainPart).collect { result ->
+                    when (result) {
+                        is Resource.Loading<*> -> {
+                            _state.value = _state.value.copy(isLoading = true)
+                            Log.d("ScanTextViewModel", "LOADING")
+                        }
+                        is Resource.Error<*> -> {
                             _state.value = _state.value.copy(
-                                isLoading = false,
-                                scanResults = it,
-                                count = it.count
+                                isError = result.message ?: "Unknown error occurred",
+                                isLoading = false
                             )
+                            Log.d("ScanTextViewModel", "ERROR: ${_state.value.isError}")
+                        }
+                        is Resource.Success<*> -> {
+                            result.data?.let { pdfResponse ->
+                                Log.d("ScanTextViewModel", "PDF processed: ${pdfResponse.document?.title}")
+                                _state.value = _state.value.copy(
+                                    isLoading = false,
+                                    pdfResponse = pdfResponse,
+                                    switchToResults = true
+                                )
 
-                            Log.d("STATE_UPDATED", "New state: ${_state.value.scanResults?.count} items")
-
-                            // Fetch images after state is updated
-                            // switchToResults will be set to true AFTER images are fetched
-                            getImagesUrl()
+                                // Start polling for async results (Phase 5)
+                                pdfResponse.job_id?.let { jobId ->
+                                    startPollingJobStatus(jobId)
+                                }
+                            }
                         }
                     }
                 }
+
+                // Cleanup temp file
+                tempFile.delete()
+
+            } catch (e: Exception) {
+                Log.e("ScanTextViewModel", "Upload error: ${e.message}", e)
+                _state.value = _state.value.copy(
+                    isError = e.message ?: "Upload failed",
+                    isLoading = false
+                )
             }
         }
+    }
+
+    /**
+     * Phase 5: Poll for async content generation results
+     */
+    private fun startPollingJobStatus(jobId: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isPolling = true)
+
+            pollJobStatusUseCase.invoke(jobId).collect { result ->
+                when (result) {
+                    is Resource.Success<*> -> {
+                        result.data?.let { status ->
+                            _state.value = _state.value.copy(
+                                jobStatus = status,
+                                isPolling = status.status != "complete" && status.status != "error"
+                            )
+                            Log.d("ScanTextViewModel", "Job status: ${status.status}")
+                        }
+                    }
+                    is Resource.Error<*> -> {
+                        Log.e("ScanTextViewModel", "Polling error: ${result.message}")
+                        _state.value = _state.value.copy(isPolling = false)
+                    }
+                    is Resource.Loading<*> -> { /* ignore */ }
+                }
+            }
+        }
+    }
+
+    fun resetState() {
+        Log.d("RESET_STATE", "Resetting view model state")
+        _state.value = ScanImageScreenState()
+    }
+
+    fun getCurrentPdfResponse() = _state.value.pdfResponse
+    fun getCurrentJobStatus() = _state.value.jobStatus
+
+    // --- Helpers ---
+
+    private fun copyUriToTempFile(uri: Uri, context: Context): File? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val tempFile = File(context.cacheDir, "upload_${System.currentTimeMillis()}.pdf")
+            tempFile.outputStream().use { output ->
+                inputStream.copyTo(output)
+            }
+            inputStream.close()
+            tempFile
+        } catch (e: Exception) {
+            Log.e("ScanTextViewModel", "Failed to copy URI to temp file: ${e.message}")
+            null
+        }
+    }
+
+    private fun getFileName(uri: Uri, context: Context): String? {
+        var name: String? = null
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (cursor.moveToFirst() && nameIndex >= 0) {
+                name = cursor.getString(nameIndex)
+            }
+        }
+        return name
     }
 }

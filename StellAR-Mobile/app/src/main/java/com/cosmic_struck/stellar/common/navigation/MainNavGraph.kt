@@ -3,6 +3,9 @@ package com.cosmic_struck.stellar.common.navigation
 import android.util.Log
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -21,8 +24,7 @@ import com.cosmic_struck.stellar.stellar.arlab.presentation.navigation.arLabNavi
 import com.cosmic_struck.stellar.stellar.home.presentation.StellarHomeScreen
 import com.cosmic_struck.stellar.stellar.models.presentation.navigation.modelNavGraph
 import com.cosmic_struck.stellar.stellar.scantext.presentation.navigation.scanImageGraph
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
+import io.appwrite.services.Account
 import com.cosmic_struck.stellar.onboarding.presentation.OnboardingScreen
 import com.cosmic_struck.stellar.physics.navigation.physicsNavigation
 import com.cosmic_struck.stellar.history.navigation.historyNavigation
@@ -30,15 +32,27 @@ import com.cosmic_struck.stellar.history.navigation.historyNavigation
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainNavGraph(
-    supabase: SupabaseClient,
+    account: Account,
     navHostController: NavHostController,
     onboardingCompleted: Boolean,
     modifier: Modifier = Modifier) {
 
-        val auth = supabase.auth.currentSessionOrNull()
+        // Check if user has an active session
+        val hasSession = remember { mutableStateOf<Boolean?>(null) }
+        LaunchedEffect(Unit) {
+            hasSession.value = try {
+                account.get()
+                true
+            } catch (e: Exception) {
+                false
+            }
+        }
 
-        Log.d("MAINNAVGRAPH",auth.toString())
-        val startDestination = if (!onboardingCompleted) "onboarding" else if(auth!= null) Screens.HomeScreen.route else "auth"
+        val sessionChecked = hasSession.value
+        if (sessionChecked == null) return // Still loading
+
+        Log.d("MAINNAVGRAPH","has session: $sessionChecked")
+        val startDestination = if (!onboardingCompleted) "onboarding" else if(sessionChecked) Screens.HomeScreen.route else "auth"
         NavHost(navHostController, startDestination = startDestination) {
 
             composable("onboarding") {
@@ -110,4 +124,3 @@ fun MainNavGraph(
 
         }
     }
-

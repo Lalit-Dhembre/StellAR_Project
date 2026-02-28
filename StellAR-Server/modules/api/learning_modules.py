@@ -3,7 +3,7 @@ import os
 import uuid
 import json
 from werkzeug.utils import secure_filename
-from modules.supabase_service import supabase_service
+from modules.appwrite_service import appwrite_service
 import threading
 import shutil
 

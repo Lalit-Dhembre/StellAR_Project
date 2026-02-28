@@ -34,8 +34,8 @@ android {
         val file = rootProject.file("secrets.properties")
         val properties = Properties()
         properties.load(file.inputStream())
-        buildConfigField("String", "SUPABASE_URL", properties.getProperty("SUPABASE_URL"))
-        buildConfigField("String", "SUPABASE_KEY", properties.getProperty("SUPABASE_KEY"))
+        buildConfigField("String", "APPWRITE_ENDPOINT", properties.getProperty("APPWRITE_PUBLIC_ENDPOINT"))
+        buildConfigField("String", "APPWRITE_PROJECT_ID", "\"" + properties.getProperty("APPWRITE_PROJECT_ID") + "\"")
         buildConfigField("String","ARCORE_KEY",properties.getProperty("ARCORE_KEY"))
     }
 
@@ -59,6 +59,12 @@ android {
         compose = true
         prefab = true
         buildConfig = true
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("com.squareup.okhttp3:okhttp:4.12.0")
     }
 }
 
@@ -125,8 +131,8 @@ dependencies {
     implementation("me.saket.swipe:swipe:1.3.0")
 
     //Retrofit
-    implementation("com.squareup.retrofit2:retrofit:3.0.0")
-    implementation("com.squareup.retrofit2:converter-gson:3.0.0")
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 
     //Paging
     implementation("androidx.paging:paging-compose:3.3.6")
@@ -135,16 +141,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
 
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.2.6"))
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.github.jan-tennert.supabase:auth-kt")
-    implementation("io.github.jan-tennert.supabase:realtime-kt")
-    implementation("io.github.jan-tennert.supabase:storage-kt")
+    // Appwrite Android SDK
+    implementation("io.appwrite:sdk-for-android:6.1.0")
 
     implementation("dev.chrisbanes.haze:haze-jetpack-compose:0.4.1")
     implementation("io.github.sceneview:sceneview:2.3.1")
     implementation("io.github.sceneview:arsceneview:2.3.2")
-    implementation("io.ktor:ktor-client-okhttp:3.3.3")
 
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
@@ -152,7 +154,7 @@ dependencies {
     implementation("com.google.accompanist:accompanist-swiperefresh:0.36.0")
     implementation("io.coil-kt:coil-compose:2.4.0")
 // OkHttp for HTTP client
-    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation(project(":chemLab"))
     implementation(fileTree(mapOf(

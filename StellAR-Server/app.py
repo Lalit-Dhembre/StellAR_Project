@@ -42,8 +42,10 @@ app.config['JWT_SECRET_KEY'] = 'super-secret-key-change-this-in-prod'  # Change 
 app.config['OUTPUT_DIR'] = OUTPUT_DIR
 app.config['GENERATED_DIR'] = GENERATED_DIR
 app.config['COMFYUI_OUTPUT_DIR'] = COMFYUI_OUTPUT_DIR
-app.config['SUPABASE_URL'] = os.environ.get('SUPABASE_URL')
-app.config['SUPABASE_KEY'] = os.environ.get('SUPABASE_KEY')
+app.config['APPWRITE_ENDPOINT'] = os.environ.get('APPWRITE_ENDPOINT')
+app.config['APPWRITE_PROJECT_ID'] = os.environ.get('APPWRITE_PROJECT_ID')
+app.config['APPWRITE_API'] = os.environ.get('APPWRITE_API')
+app.config['APPWRITE_DATABASE_ID'] = os.environ.get('APPWRITE_DATABASE_ID')
 
 
 # Initialize Extensions
@@ -77,6 +79,7 @@ from modules.api.llm_response import llm_api
 from modules.api.ocr import ocr_bp
 from modules.api.learning_modules import learning_modules_bp
 from modules.api.module_api import module_api_bp
+from modules.api.pdf_pipeline import pdf_bp
 
 
 app.register_blueprint(scan_bp)
@@ -87,6 +90,7 @@ app.register_blueprint(llm_api)
 app.register_blueprint(ocr_bp)
 app.register_blueprint(learning_modules_bp)
 app.register_blueprint(module_api_bp)
+app.register_blueprint(pdf_bp)
 
 # Create Tables
 with app.app_context():
@@ -134,12 +138,12 @@ def initialize_modules():
         
         print("✅ All available modules loaded!")
         
-        # Initialize Supabase
+        # Initialize Appwrite
         try:
-            from modules.supabase_service import supabase_service
-            supabase_service.initialize()
+            from modules.appwrite_service import appwrite_service
+            appwrite_service.initialize()
         except Exception as e:
-            logger.warning(f"Supabase init failed: {e}")
+            logger.warning(f"Appwrite init failed: {e}")
 
             
     except Exception as e:

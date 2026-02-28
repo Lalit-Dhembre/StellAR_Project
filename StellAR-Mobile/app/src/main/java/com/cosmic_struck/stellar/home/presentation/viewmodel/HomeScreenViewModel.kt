@@ -22,8 +22,7 @@ import com.cosmic_struck.stellar.home.domain.usecases.UpdateUserProfilePictureUs
 import android.content.Context
 import android.net.Uri
 import dagger.hilt.android.lifecycle.HiltViewModel
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
+import io.appwrite.services.Account
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -35,7 +34,7 @@ class HomeScreenViewModel @Inject constructor(
     private val getUserProfileUseCase: GetUserProfileUseCase,
     private val joinClassroomUseCase: JoinClassroomUseCase,
     private val createClassroomUseCase: CreateClassroomUseCase,
-    private val supabaseClient: SupabaseClient,
+    private val account: Account,
     private val savedStateHandle: SavedStateHandle,
     private val getUserCreatedClassroom: GetUserCreatedClassroom,
     private val updateUserProfilePictureUseCase: UpdateUserProfilePictureUseCase
@@ -73,7 +72,7 @@ class HomeScreenViewModel @Inject constructor(
     }
     fun joinClassroom(){
         viewModelScope.launch {
-            val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+            val userId = account.get().id
             joinClassroomUseCase(userId,state.value.codeText ).collect {
                 when(it){
                     is Resource.Loading<*> -> _state.value = _state.value.copy(isLoading = true)
@@ -122,7 +121,7 @@ class HomeScreenViewModel @Inject constructor(
 
     fun createClassroom() {
         viewModelScope.launch {
-            val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+            val userId = account.get().id
             val classroomName = state.value.classroomNameText.trim()
             
             if (classroomName.isEmpty()) {
@@ -167,7 +166,7 @@ class HomeScreenViewModel @Inject constructor(
 
     fun getUser(){
         viewModelScope.launch {
-            val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+            val userId = account.get().id
             getUserProfileUseCase(userId).collect{it->
                 when(it){
                     is Resource.Loading<*> -> _state.value = _state.value.copy(isLoading = true)
@@ -185,7 +184,7 @@ class HomeScreenViewModel @Inject constructor(
     }
     fun getCreatedClassrooms(){
         viewModelScope.launch {
-            val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+            val userId = account.get().id
             getUserCreatedClassroom(userId).collect {it->
                 when(it){
                     is Resource.Error<*> -> {
@@ -210,7 +209,7 @@ class HomeScreenViewModel @Inject constructor(
     @OptIn(UnstableApi::class)
     fun getJoinedClassrooms(){
         viewModelScope.launch {
-            val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+            val userId = account.get().id
             Log.d("UserId",userId.toString())
             getUserJoinedClassroomsUseCase(userId).collect { it->
                 when (it){
@@ -242,13 +241,13 @@ class HomeScreenViewModel @Inject constructor(
     fun updateProfilePicture(uri: Uri, context: Context) {
         viewModelScope.launch {
             try {
-                val userId = supabaseClient.auth.retrieveUserForCurrentSession().id
+                val userId = account.get().id
                 updateUserProfilePictureUseCase(userId, uri, context).collect { result ->
                     when (result) {
                         is Resource.Loading -> _state.value = _state.value.copy(isLoading = true)
                         is Resource.Success -> {
                             // Append timestamp to force refresh the image in UI
-                            val freshUrl = (result.data ?: "") + "?t=${System.currentTimeMillis()}"
+                            val freshUrl = (result.data ?: "") + "&t=${System.currentTimeMillis()}"
                             _state.value = _state.value.copy(
                                 isLoading = false,
                                 profile = freshUrl

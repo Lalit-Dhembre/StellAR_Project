@@ -3,8 +3,6 @@ package com.cosmic_struck.stellar.auth.presentation.viewmodel
 import android.app.Application
 import android.net.Uri
 import android.util.Log
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cosmic_struck.stellar.auth.domain.LoginUseCase
@@ -12,11 +10,6 @@ import com.cosmic_struck.stellar.auth.domain.SignUpUseCase
 import com.cosmic_struck.stellar.auth.presentation.AuthScreenState
 import com.cosmic_struck.stellar.common.util.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.Google
-import io.github.jan.supabase.auth.providers.builtin.Email
-import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -43,8 +36,11 @@ class AuthViewModel @Inject constructor(
             ).collect {
                 when(it){
                     is Resource.Loading<*> -> {_state.value = _state.value.copy(isLoading = true) }
-                    is Resource.Error<*> -> {_state.value = _state.value.copy(isLoading = false, error = it.message.toString())}
-                    is Resource.Success<*> -> {_state.value = _state.value.copy(isLoading = false, success = true)}
+                    is Resource.Error<*> -> {_state.value = _state.value.copy(isLoading = false, error = it.message.toString())
+                    Log.d("APP SIGNUP FAILED","FAILED: ${it.message.toString()}")}
+                    is Resource.Success<*> -> {_state.value = _state.value.copy(isLoading = false, success = true)
+                        Log.d("APP SIGNUP SUCCESS","SUCCESS")
+                    }
                 }
             }
         }

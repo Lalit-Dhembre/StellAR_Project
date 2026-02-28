@@ -15,22 +15,22 @@ models_bp = Blueprint('models', __name__, url_prefix='/api')
 def list_models():
     """List models filtered by subject"""
     try:
-        from modules.supabase_service import supabase_service
+        from modules.appwrite_service import appwrite_service
         
         subject = request.args.get('subject')
         
         # Build query
         # We want speicific fields: model_id, model_name, description, rarity, model_subject, model_thumbnail, xp_reward
-        # Supabase 'select' can do this.
+        # Appwrite query with select.
         
         filters = {}
         if subject:
             filters['model_subject'] = subject
             
-        models = supabase_service.query_records("models", select="*", filters=filters)
+        models = appwrite_service.query_records("models", select="*", filters=filters)
         
         # Transform logic if necessary, otherwise return as is.
-        # The user requested specific JSON structure. Supabase returns list of dicts.
+        # The user requested specific JSON structure. Appwrite returns list of dicts.
         # We can map it to be safe or return direct if columns match.
         # User requested: model_id, model_name, description, rarity, model_subject, model_thumbnail, xp_reward
         # Our schema has these exact columns.
@@ -46,15 +46,15 @@ def list_models():
 def get_model_url():
     """Fetch specific 3D asset URL"""
     try:
-        from modules.supabase_service import supabase_service
+        from modules.appwrite_service import appwrite_service
         
         model_id = request.args.get('model_id')
         if not model_id:
             return jsonify({'error': 'model_id is required'}), 400
             
-        # Query Supabase: select model_url from models where model_id = model_id
+        # Query Appwrite: select model_url from models where model_id = model_id
         # query_records returns a list
-        results = supabase_service.query_records("models", select="model_url", filters={"model_id": model_id})
+        results = appwrite_service.query_records("models", select="model_url", filters={"model_id": model_id})
         
         if not results:
             return jsonify({'error': 'Model not found'}), 404
@@ -137,15 +137,15 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
             # 1. Upload Input Image to ComfyUI (for processing)
             image_filename = comfy.upload_image(image_path)
             
-            # --- SUPABASE: Upload Thumbnail ---
+            # --- APPWRITE: Upload Thumbnail ---
             # Use the input image as the thumbnail
-            from modules.supabase_service import supabase_service
+            from modules.appwrite_service import appwrite_service
             thumbnail_url = ""
-            if supabase_service.initialized:
+            if appwrite_service.initialized:
                 try:
                     # Upload input image to 'models' bucket as thumbnail
                     thumb_name = f"thumb_{job_id}.png"
-                    thumbnail_url = supabase_service.upload_file("models", image_path, thumb_name)
+                    thumbnail_url = appwrite_service.upload_file("models", image_path, thumb_name)
                 except Exception as e:
                     print(f"⚠️ Thumbnail upload failed: {e}")
 
@@ -185,12 +185,12 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                 # Determine Final Name
                 final_name = user_provided_name if user_provided_name else f"Generated Model {job_id[:8]}"
                 
-                # --- SUPABASE INTEGRATION ---
+                # --- APPWRITE INTEGRATION ---
                 try:
-                    if supabase_service.initialized:
+                    if appwrite_service.initialized:
                         # Upload Model File
-                        model_url = supabase_service.upload_file("models", dest_path, filename)
-                        print(f"✓ Uploaded Model to Supabase: {model_url}")
+                        model_url = appwrite_service.upload_file("models", dest_path, filename)
+                        print(f"✓ Uploaded Model to Appwrite: {model_url}")
                         
                         # Calculate Rarity
                         rarity_name, xp_val = calculate_rarity()
@@ -227,13 +227,13 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                         # For now, generating a random one or handling it at DB level if nullable.
                         # User schema says 'uploader_id' (uuid).
                         
-                        supabase_service.insert_record("models", record)
-                        print(f"✓ Record inserted into Supabase DB")
+                        appwrite_service.insert_record("models", record)
+                        print(f"✓ Record inserted into Appwrite DB")
                     else:
-                        print("⚠️ Supabase not initialized.")
+                        print("⚠️ Appwrite not initialized.")
                         
                 except Exception as e:
-                    print(f"⚠️ Supabase processing failed: {e}")
+                    print(f"⚠️ Appwrite processing failed: {e}")
                     # Fallback to local DB (using old schema? might fail if table changed)
                     # We skip fallback for now as schema diverged too much.
 

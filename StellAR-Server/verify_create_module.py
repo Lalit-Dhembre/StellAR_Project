@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 # Ensure modules can be imported
 sys.path.append(os.getcwd())
 
-# Mock Supabase Service BEFORE importing modules
-sys.modules['modules.supabase_service'] = MagicMock()
+# Mock Appwrite Service BEFORE importing modules
+sys.modules['modules.appwrite_service'] = MagicMock()
 mock_service = MagicMock()
-sys.modules['modules.supabase_service'].supabase_service = mock_service
+sys.modules['modules.appwrite_service'].appwrite_service = mock_service
 
 # Mock OCR and Quiz Generator
 sys.modules['modules.api.ocr'] = MagicMock()
@@ -22,9 +22,9 @@ sys.modules['modules.quiz_generator'].generate_quiz_from_text.return_value = [{"
 sys.modules['modules.quiz_generator'].generate_summary_from_text.return_value = "Mock summary"
 
 # Mock upload_file to return dummy URLs
-mock_service.upload_file.side_effect = lambda bucket, source, dest: f"https://mock.supabase.co/{bucket}/{dest}"
+mock_service.upload_file.side_effect = lambda bucket, source, dest: f"https://mock.appwrite.io/{bucket}/{dest}"
 mock_service.insert_record.return_value = [{"id": 1}]
-mock_service.update_record.return_value = [{"id": 1, "model_url": "https://mock.supabase.co/models/gen_123.glb"}]
+mock_service.update_record.return_value = [{"id": 1, "model_url": "https://mock.appwrite.io/models/gen_123.glb"}]
 
 try:
     from modules.api.learning_modules import learning_modules_bp

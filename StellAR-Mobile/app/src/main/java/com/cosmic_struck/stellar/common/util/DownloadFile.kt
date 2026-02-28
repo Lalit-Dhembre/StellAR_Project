@@ -64,22 +64,24 @@ class DownloadFile @Inject constructor(
             val body = response.body
 
             // Stream directly to file (memory efficient for large files)
-            val contentLength = body.contentLength()
+            val contentLength = body?.contentLength()
             var downloadedBytes = 0L
 
             FileOutputStream(targetFile).use { fileOutput ->
-                body.byteStream().use { inputStream ->
+                body?.byteStream().use { inputStream ->
                     val buffer = ByteArray(8192) // 8KB chunks
                     var bytesRead: Int
 
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    while (inputStream?.read(buffer).also { bytesRead = it ?: 0 } != -1) {
                         fileOutput.write(buffer, 0, bytesRead)
                         downloadedBytes += bytesRead
 
                         // Emit progress
-                        if (contentLength > 0) {
-                            val progress = (downloadedBytes * 100 / contentLength).toInt()
-                            Log.d("Download File", "Download progress: $progress%")
+                        if (contentLength != null) {
+                            if (contentLength > 0) {
+                                val progress = (downloadedBytes * 100 / contentLength).toInt()
+                                Log.d("Download File", "Download progress: $progress%")
+                            }
                         }
                     }
                 }
