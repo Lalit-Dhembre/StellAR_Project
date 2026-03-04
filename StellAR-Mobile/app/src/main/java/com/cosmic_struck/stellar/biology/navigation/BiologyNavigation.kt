@@ -19,12 +19,21 @@ fun NavGraphBuilder.biologyNavigation(
     ) {
         composable(
             route = BiologyNavigationScreens.BiologyHomeScreen.route
-        ) {
+        ) { backStackEntry ->
+            val viewModel: com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel = 
+                androidx.hilt.navigation.compose.hiltViewModel()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            
             BiologyHomeScreen(
                 navHostController = navHostController,
-                navigateToScanText = {
-                    // Navigate to models screen for now
+                onUploadClick = {
+                    // Start document picker instead of navigating to scan_image
+                },
+                onModelsClick = {
                     navHostController.navigate(BiologyNavigationScreens.BiologyModels.route)
+                },
+                onDocumentSelected = { uri ->
+                    viewModel.uploadDocument(context, uri, "biology")
                 }
             )
         }

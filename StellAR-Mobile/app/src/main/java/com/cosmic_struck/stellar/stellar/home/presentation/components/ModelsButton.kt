@@ -1,4 +1,4 @@
-package com.cosmic_struck.stellar.biology.home.components
+package com.cosmic_struck.stellar.stellar.home.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,14 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cosmic_struck.stellar.R
-import com.cosmic_struck.stellar.biology.common.BioGlow
-import com.cosmic_struck.stellar.biology.common.BiologyGreen
-import com.cosmic_struck.stellar.biology.common.BiologyTeal
 import com.cosmic_struck.stellar.common.util.Rajdhani
 
 @Composable
-fun BiologyUploadButton(
-    onUploadClick: () -> Unit,
+fun ModelsButton(
+    onModelsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -43,18 +40,18 @@ fun BiologyUploadButton(
             .shadow(
                 elevation = 16.dp,
                 shape = RoundedCornerShape(32.dp),
-                spotColor = BioGlow
+                spotColor = Color(0xFF00E5FF)
             )
             .clip(RoundedCornerShape(32.dp))
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        BiologyGreen,     // Deep Green
-                        BiologyTeal       // Teal
+                        Color(0xFF00E5FF), // Cyan
+                        Color(0xFF6200EA)  // Deep Violet
                     )
                 )
             )
-            .clickable(onClick = onUploadClick)
+            .clickable(onClick = onModelsClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -63,14 +60,14 @@ fun BiologyUploadButton(
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
-                painter = painterResource(R.drawable.pdf),
+                painter = painterResource(R.drawable.eye),
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
-                text = "UPLOAD DOCUMENT",
+                text = "EXPLORE 3D MODELS",
                 color = Color.White,
                 fontFamily = Rajdhani,
                 fontWeight = FontWeight.Bold,

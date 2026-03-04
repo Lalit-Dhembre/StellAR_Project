@@ -26,8 +26,21 @@ fun NavGraphBuilder.historyNavigation(navHostController: NavHostController) {
         startDestination = HistoryNavigationScreens.HistoryHomeScreen.route,
         route = "history_navigation"
     ) {
-        composable(route = HistoryNavigationScreens.HistoryHomeScreen.route) {
-            HistoryHomeScreen(navHostController)
+        composable(route = HistoryNavigationScreens.HistoryHomeScreen.route) { backStackEntry ->
+            val viewModel: com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel = 
+                androidx.hilt.navigation.compose.hiltViewModel()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            
+            HistoryHomeScreen(
+                navHostController = navHostController,
+                onUploadClick = { },
+                onModelsClick = {
+                    navHostController.navigate(HistoryNavigationScreens.HistoryModels.route)
+                },
+                onDocumentSelected = { uri ->
+                    viewModel.uploadDocument(context, uri, "history")
+                }
+            )
         }
         composable(route = HistoryNavigationScreens.HistoryModels.route) {
             HistoryModelsScreen(navHostController)

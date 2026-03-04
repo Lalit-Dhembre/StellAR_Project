@@ -82,12 +82,20 @@ fun MainNavGraph(
             }
 
 
-            composable(route = Screens.StellarHomeScreen.route){
+            composable(route = Screens.StellarHomeScreen.route){ backStackEntry ->
+                val scanViewModel: com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel = 
+                    androidx.hilt.navigation.compose.hiltViewModel()
+                val context = androidx.compose.ui.platform.LocalContext.current
+                
                 StellarHomeScreen(
                     navHostController = navHostController,
-                    navigateToScanText = {
-                        navHostController.navigate("scan_image")
+                    onUploadClick = { },
+                    onModelsClick = {
+                        navHostController.navigate("models") 
                     },
+                    onDocumentSelected = { uri ->
+                        scanViewModel.uploadDocument(context, uri, "stellar")
+                    }
                 )
             }
 

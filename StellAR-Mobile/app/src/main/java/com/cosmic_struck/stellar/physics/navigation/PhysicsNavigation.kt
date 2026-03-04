@@ -27,8 +27,21 @@ fun NavGraphBuilder.physicsNavigation(navHostController: NavHostController) {
         startDestination = PhysicsNavigationScreens.PhysicsHomeScreen.route,
         route = "physics_navigation"
     ) {
-        composable(route = PhysicsNavigationScreens.PhysicsHomeScreen.route) {
-            PhysicsHomeScreen(navHostController)
+        composable(route = PhysicsNavigationScreens.PhysicsHomeScreen.route) { backStackEntry ->
+            val viewModel: com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel = 
+                androidx.hilt.navigation.compose.hiltViewModel()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            
+            PhysicsHomeScreen(
+                navHostController = navHostController,
+                onUploadClick = { },
+                onModelsClick = {
+                    navHostController.navigate(PhysicsNavigationScreens.PhysicsModels.route)
+                },
+                onDocumentSelected = { uri ->
+                    viewModel.uploadDocument(context, uri, "physics")
+                }
+            )
         }
         composable(route = PhysicsNavigationScreens.PhysicsModels.route) {
             PhysicsModelsScreen(navHostController)

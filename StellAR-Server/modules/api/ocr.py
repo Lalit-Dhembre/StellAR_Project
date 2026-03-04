@@ -72,9 +72,20 @@ def process_ocr(file_path):
     images = []
 
     # -------------------------------
+    # Handle Text files
+    # -------------------------------
+    if ext == '.txt':
+        with open(file_path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        return {
+            "text": text,
+            "words": [{"text": w, "confidence": 100, "page": 1, "bbox": None} for w in text.split()]
+        }
+        
+    # -------------------------------
     # Handle PDF
     # -------------------------------
-    if ext == '.pdf':
+    elif ext == '.pdf':
         images = convert_from_path(file_path, dpi=300)
 
     # -------------------------------

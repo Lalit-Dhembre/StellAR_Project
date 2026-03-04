@@ -1,128 +1,111 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import os
 import uuid
 from modules.models import db, User
-# We need to access the global planet_detector from app context or a shared module
-# Ideally, we should move the detector initialization to a shared location or use current_app
-from flask import current_app
-from modules.api.llm_response import generate_info_internal
 
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "phi4"
+# LangChain imports
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, UnstructuredImageLoader
+from modules.api.domain_validator import validate_domain
 
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
 
 @scan_bp.route('', methods=['POST'])
 # @jwt_required()
-def scan_image():
+def scan_documents():
     """
-    Upload an image -> Detect Planets -> Generate Info via LLM for ALL detections -> Return Combined Data
+    Upload documents -> OCR -> extract keywords -> Generate Info via LLM -> Return Combined Data
     """
     print("\n" + "="*50, flush=True) 
-    print("[DEBUG] RECEIVED REQUEST: /api/scan", flush=True)
-    temp_path = None
+    print("[DEBUG] RECEIVED REQUEST: /api/scan docs", flush=True)
+    temp_paths = []
     
     try:
         print(f"[DEBUG] Request Headers: {request.headers}", flush=True)
         
-        if 'file' not in request.files:
-            print("[DEBUG] ERROR: No file part in request", flush=True)
-            return jsonify({'error': 'No file uploaded'}), 400
-        
-        file = request.files['file']
-        print(f"[DEBUG] File Filename: '{file.filename}'", flush=True)
-        
-        if file.filename == '':
-            print("[DEBUG] ERROR: Empty filename", flush=True)
-            return jsonify({'error': 'No file selected'}), 400
+        # We expect a list of files under the key 'files' or 'file'
+        files = request.files.getlist('files')
+        if not files:
+            files = request.files.getlist('file')
             
-        # Access detector from app config/context
-        detector = current_app.planet_detector
-        
-        if not detector:
-            print("[DEBUG] ERROR: Detection system not initialized", flush=True)
-            return jsonify({'error': 'Detection system not initialized'}), 500
+        if not files or files[0].filename == '':
+            print("[DEBUG] ERROR: No files in request", flush=True)
+            return jsonify({'error': 'No files uploaded'}), 400
             
-        # Save temp file
-        temp_id = str(uuid.uuid4())
         output_dir = current_app.config.get('OUTPUT_DIR', 'temp_uploads') 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
-        temp_path = os.path.join(output_dir, f"temp_scan_{temp_id}.png")
-        file.save(temp_path)
+        all_documents = []
         
-        # 1. Run detection
-        print(f"[DEBUG] Saving temp file to: {temp_path}", flush=True)
-        print("[DEBUG] Starting PLANET DETECTION...", flush=True)
-        
-        # Check if file exists and has size
-        if os.path.exists(temp_path):
-             print(f"[DEBUG] File size: {os.path.getsize(temp_path)} bytes", flush=True)
-        else:
-             print("[DEBUG] ERROR: File was not saved correctly!", flush=True)
-             
-        result = detector.detect_and_classify_planets(temp_path)
-        print(f"[DEBUG] Detection Raw Result: {result}", flush=True)
-        
-        # Cleanup immediately
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            temp_path = None # Reset so finally doesn't try to delete again
+        for file in files:
+            print(f"[DEBUG] Processing File: '{file.filename}'", flush=True)
+            temp_id = str(uuid.uuid4())
+            ext = os.path.splitext(file.filename)[1].lower()
+            temp_path = os.path.join(output_dir, f"temp_scan_{temp_id}{ext}")
+            file.save(temp_path)
+            temp_paths.append(temp_path)
             
-        if 'error' in result:
-            print(f"[DEBUG] Detection returned error: {result['error']}", flush=True)
-            return jsonify({'error': result['error']}), 500
-            
-        # 2. Process detections
-        detections = []
-        detected_names = []
-        best_match_name = None
-        highest_confidence = 0.0
-
-        for d in result.get('detections', []):
-            conf = d.get('confidence', 0)
-            if conf > 0.5:  # Confidence threshold
-                class_name = d['class_name']
-                detections.append({
-                    'name': class_name,
-                    'confidence': conf,
-                    'bbox': d.get('bbox')
-                })
-                detected_names.append(class_name)
-                
-                if conf > highest_confidence:
-                    highest_confidence = conf
-                    best_match_name = class_name
-        
-        # 3. Generate Info for ALL detected objects
-        llm_info = []
-        if detected_names:
+            # Use LangChain document loaders based on extension
             try:
-                print(f"Generating info for detected objects: {detected_names}")
-                # Pass all detected names to generate info for each one
-                llm_info = generate_info_internal(detected_names)
+                if ext == '.pdf':
+                    loader = PyPDFLoader(temp_path)
+                elif ext == '.txt':
+                    loader = TextLoader(temp_path)
+                elif ext in ['.png', '.jpg', '.jpeg']:
+                    # Requires unstructured and other dependencies
+                    loader = UnstructuredImageLoader(temp_path)
+                else:
+                    print(f"[DEBUG] Unsupported file type: {ext}")
+                    continue
+                    
+                docs = loader.load()
+                # Convert LangChain Document objects to dicts for JSON serialization
+                for doc in docs:
+                    all_documents.append({
+                        "page_content": doc.page_content,
+                        "metadata": doc.metadata
+                    })
+                print(f"[DEBUG] Successfully loaded {len(docs)} documents from {file.filename}")
             except Exception as e:
-                print(f"LLM Generation failed: {e}")
-                # Fallback: create empty info for each detection
-                llm_info = [{
-                    "title": name,
-                    "summary": "Could not generate information at this time.",
-                    "badge": "No Badge",
-                    "facts": ["Data unavailable", "Data unavailable", "Data unavailable"],
-                    "error": str(e)
-                } for name in detected_names]
+                print(f"[DEBUG] Error loading {file.filename}: {e}")
 
-        # 4. Construct Final Response
+        # --- Domain Validation ---
+        domain = request.form.get('domain', '').strip().lower()
+        print(f"[DEBUG] Requested domain: '{domain}'", flush=True)
+        
+        if domain and all_documents:
+            # Concatenate text from all documents (first 2000 chars)
+            full_text = "\n".join([d["page_content"] for d in all_documents])
+            
+            try:
+                validation = validate_domain(full_text, domain)
+                print(f"[DEBUG] Domain validation result: {validation}", flush=True)
+                
+                if not validation.get("match", False):
+                    # Domain mismatch — tell the user
+                    response_data = {
+                        'success': False,
+                        'domain_match': False,
+                        'detected_domain': validation.get('detected_domain', 'unknown'),
+                        'message': f"This document appears to be about {validation.get('detected_domain', 'another subject')}, not {domain}. Please upload a {domain}-related document.",
+                        'reason': validation.get('reason', ''),
+                        'documents': [],
+                        'count': 0
+                    }
+                    print(f"[DEBUG] Domain mismatch! Returning rejection.", flush=True)
+                    return jsonify(response_data), 200
+            except Exception as e:
+                print(f"[DEBUG] Domain validation error (proceeding anyway): {e}", flush=True)
+        
+        # 4. Construct Final Response (domain matched or no domain specified)
         response_data = {
             'success': True,
-            'detections': detections,
-            'best_match': best_match_name,
-            'info': llm_info,  # Now returns array of info objects
-            'count': len(detections)
+            'domain_match': True,
+            'documents': all_documents,
+            'count': len(all_documents)
         }
-        print(f"[DEBUG] Success! Response: {response_data}", flush=True)
+        print(f"[DEBUG] Success! Extracted {len(all_documents)} document sections.", flush=True)
         
         return jsonify(response_data), 200
         
@@ -133,9 +116,10 @@ def scan_image():
         return jsonify({'error': str(e)}), 500
         
     finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-                print("[DEBUG] Cleaned up temp file in finally block", flush=True)
-            except Exception as cleanup_img:
-                print(f"[DEBUG] Warning: Failed to cleanup temp file: {cleanup_img}", flush=True)
+        for temp_path in temp_paths:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                    print(f"[DEBUG] Cleaned up temp file: {temp_path}", flush=True)
+                except Exception as cleanup_err:
+                    print(f"[DEBUG] Warning: Failed to cleanup temp file: {cleanup_err}", flush=True)

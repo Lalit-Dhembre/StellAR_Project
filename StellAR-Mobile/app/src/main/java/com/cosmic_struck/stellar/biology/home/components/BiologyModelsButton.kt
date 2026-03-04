@@ -32,8 +32,8 @@ import com.cosmic_struck.stellar.biology.common.BiologyTeal
 import com.cosmic_struck.stellar.common.util.Rajdhani
 
 @Composable
-fun BiologyUploadButton(
-    onUploadClick: () -> Unit,
+fun BiologyModelsButton(
+    onModelsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -49,12 +49,12 @@ fun BiologyUploadButton(
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
-                        BiologyGreen,     // Deep Green
-                        BiologyTeal       // Teal
+                        BiologyTeal,     // Teal
+                        BiologyGreen       // Deep Green
                     )
                 )
             )
-            .clickable(onClick = onUploadClick)
+            .clickable(onClick = onModelsClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -63,14 +63,14 @@ fun BiologyUploadButton(
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
-                painter = painterResource(R.drawable.pdf),
+                painter = painterResource(R.drawable.eye),
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
-                text = "UPLOAD DOCUMENT",
+                text = "EXPLORE 3D MODELS",
                 color = Color.White,
                 fontFamily = Rajdhani,
                 fontWeight = FontWeight.Bold,

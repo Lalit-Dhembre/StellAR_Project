@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.Collections.emptyList
 import javax.inject.Inject
@@ -86,104 +87,81 @@ class ScanTextViewModel @Inject constructor(
     fun getCurrentScanResults() = _state.value.scanResults
     fun getCurrentImageUrls() = _imageUrls.value
 
-    private fun getImagesUrl() {
+    // getImagesUrl() removed — old detection-based image fetching no longer applies
+
+    fun uploadDocument(context: Context, uri: Uri, domain: String = "") {
         viewModelScope.launch {
             try {
-                val detections = state.value.scanResults?.detections
-                val urls = mutableListOf<String>()
-
-                for (detection in detections ?: emptyList()) {
-                    val keyword = detection.name
-                    Log.d("IMAGE_URL", "Fetching image for: $keyword")
-
-                    val imageUrl = getImageFromKeyword.getImageUrl(keyword)
-                    if (imageUrl != null) {
-                        urls.add(imageUrl)
-                        Log.d("IMAGE_URL", "Found: $imageUrl")
-                    } else {
-                        Log.d("IMAGE_URL", "No image found for: $keyword")
-                        urls.add("")
+                Log.d("DocumentUpload", "Starting upload for URI: $uri, domain: $domain")
+                _state.value = _state.value.copy(isLoading = true)
+                
+                // Copy URI contents to a temporary file with the correct extension
+                val mimeType = context.contentResolver.getType(uri) ?: "application/pdf"
+                val ext = when {
+                    mimeType.contains("pdf") -> ".pdf"
+                    mimeType.contains("text") -> ".txt"
+                    mimeType.contains("png") -> ".png"
+                    mimeType.contains("jpeg") || mimeType.contains("jpg") -> ".jpg"
+                    else -> ".pdf"
+                }
+                val tempFile = File(context.cacheDir, "upload_doc_${System.currentTimeMillis()}$ext")
+                
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    tempFile.outputStream().use { outputStream ->
+                        inputStream.copyTo(outputStream)
                     }
                 }
-
-                _imageUrls.value = urls
-                Log.d("IMAGE_URL_COMPLETE", urls.toString())
-
-                // Now that images are fetched, mark as ready for navigation
-                _state.value = _state.value.copy(switchToResults = true)
-                Log.d("READY_FOR_RESULTS", "Navigation ready")
-
-            } catch (e: Exception) {
-                Log.e("IMAGE_URL_ERROR", "Error fetching images", e)
-                _imageUrls.value = emptyList()
-                // Still allow navigation even if images failed
-                _state.value = _state.value.copy(switchToResults = true)
-            }
-        }
-    }
-
-    fun uploadImage(file: File) {
-        val image = InputImage.fromFilePath(
-            application,
-            Uri.fromFile(file)
-        )
-
-        textRecognizer.process(image)
-            .addOnSuccessListener { it ->
-                val extractedText = it.text
-                val count = it.textBlocks.size
-                Log.d("EXTRACTED TEXT", extractedText)
-            }
-            .addOnFailureListener { e ->
-                Log.d("FAILURE EXTRACTION", e.localizedMessage ?: "Unknown error occurred")
-            }
-
-        val requestBody =
-            file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-
-        val multipart =
-            MultipartBody.Part.createFormData(
-                "file",
-                file.name,
-                requestBody
-            )
-        Log.d("VIEWMODEL", multipart.toString())
-
-        viewModelScope.launch {
-            imageUploadUseCase.invoke(multipart).collect { result ->
-                when (result) {
-                    is Resource.Loading<*> -> {
-                        _state.value = _state.value.copy(
-                            isLoading = true
-                        )
-                        Log.d("VIEWMODEL", "LOADING")
-                    }
-                    is Resource.Error<*> -> {
-                        _state.value = _state.value.copy(
-                            isError = result.message ?: "Unknown error occurred",
-                            isLoading = false
-                        )
-                        Log.d("VIEWMODEL_ERROR", _state.value.isError)
-                    }
-                    is Resource.Success<*> -> {
-                        result.data?.let {
-                            Log.d("SCAN RESULTS FROM VIEWMODEL", it.toString())
-
-                            // Update state with new data (NOT switchToResults yet)
-                            _state.value = _state.value.copy(
-                                isLoading = false,
-                                scanResults = it,
-                                count = it.count
-                            )
-
-                            Log.d("STATE_UPDATED", "New state: ${_state.value.scanResults?.count} items")
-
-                            // Fetch images after state is updated
-                            // switchToResults will be set to true AFTER images are fetched
-                            getImagesUrl()
+                
+                val requestBody = tempFile.asRequestBody(mimeType.toMediaTypeOrNull())
+                val multipart = MultipartBody.Part.createFormData("files", tempFile.name, requestBody)
+                val domainBody = domain.toRequestBody("text/plain".toMediaTypeOrNull())
+                
+                imageUploadUseCase.invoke(multipart, domainBody).collect { result ->
+                    when (result) {
+                        is Resource.Loading -> {
+                            Log.d("DocumentUpload", "Loading...")
+                        }
+                        is Resource.Error -> {
+                            Log.e("DocumentUpload", "Error: ${result.message}")
+                            _state.value = _state.value.copy(isError = result.message ?: "Unknown error", isLoading = false)
+                        }
+                        is Resource.Success -> {
+                            result.data?.let { dto ->
+                                Log.d("DocumentUpload", "--- UPLOAD RESPONSE ---")
+                                Log.d("DocumentUpload", "Success: ${dto.success}, Domain match: ${dto.domain_match}")
+                                
+                                if (dto.domain_match == false) {
+                                    // Domain mismatch!
+                                    Log.w("DocumentUpload", "DOMAIN MISMATCH: ${dto.message}")
+                                    Log.w("DocumentUpload", "Detected domain: ${dto.detected_domain}, Reason: ${dto.reason}")
+                                    _state.value = _state.value.copy(
+                                        isLoading = false,
+                                        isError = dto.message ?: "Document does not match the expected domain."
+                                    )
+                                } else {
+                                    // Domain matched — show documents
+                                    if (dto.documents != null) {
+                                        Log.d("DocumentUpload", "--- LANGCHAIN DOCUMENTS PARSED ---")
+                                        dto.documents.forEachIndexed { index, doc ->
+                                            Log.d("DocumentUpload", "Document #$index:")
+                                            Log.d("DocumentUpload", "  Metadata: ${doc.metadata}")
+                                            Log.d("DocumentUpload", "  Content (first 100 chars): ${doc.page_content.take(100)}...")
+                                        }
+                                    }
+                                    
+                                    _state.value = _state.value.copy(
+                                        isLoading = false,
+                                        scanResults = dto,
+                                        count = dto.count
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+            } catch (e: Exception) {
+                Log.e("DocumentUpload", "Exception during upload setup: ${e.message}", e)
+                _state.value = _state.value.copy(isError = e.message ?: "Setup error", isLoading = false)
             }
         }
     }

@@ -32,8 +32,8 @@ import com.cosmic_struck.stellar.chemistry.common.ChemistryPurple
 import com.cosmic_struck.stellar.common.util.Rajdhani
 
 @Composable
-fun ChemistryScanButton(
-    navigateToScanText: () -> Unit,
+fun ChemistryUploadButton(
+    onUploadClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -54,7 +54,7 @@ fun ChemistryScanButton(
                     )
                 )
             )
-            .clickable(onClick = navigateToScanText)
+            .clickable(onClick = onUploadClick)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -63,14 +63,14 @@ fun ChemistryScanButton(
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
-                painter = painterResource(R.drawable.scan),
+                painter = painterResource(R.drawable.pdf),
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
-                text = "SCAN CHEMISTRY TEXT",
+                text = "UPLOAD DOCUMENT",
                 color = Color.White,
                 fontFamily = Rajdhani,
                 fontWeight = FontWeight.Bold,

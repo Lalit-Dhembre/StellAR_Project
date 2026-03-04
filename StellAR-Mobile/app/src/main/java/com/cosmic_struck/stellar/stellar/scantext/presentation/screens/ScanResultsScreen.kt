@@ -3,10 +3,17 @@ package com.cosmic_struck.stellar.stellar.scantext.presentation.screens
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -17,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cosmic_struck.stellar.common.components.StellarScaffold
-import com.cosmic_struck.stellar.stellar.scantext.presentation.components.ScanCard
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.TopBarScanTextBook
 import com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel
 
@@ -28,20 +34,17 @@ fun ScanResultsScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsState()
-    val imageUrls by viewModel.imageUrls.collectAsState()
 
     Log.d("SCAN_RESULTS_SCREEN", "State: $state")
     Log.d("SCAN_RESULTS_SCREEN", "ScanResults null: ${state.scanResults == null}")
     Log.d("SCAN_RESULTS_SCREEN", "Count: ${state.scanResults?.count}")
-    Log.d("SCAN_RESULTS_SCREEN", "Info size: ${state.scanResults?.info?.size}")
-    Log.d("SCAN_RESULTS_SCREEN", "Image URLs: $imageUrls")
-
+    Log.d("SCAN_RESULTS_SCREEN", "Documents size: ${state.scanResults?.documents?.size}")
 
     StellarScaffold(
         topBar = {
             TopBarScanTextBook(
-                title = "Scan Results",
-                navigateBack ={onNavigateBack()}
+                title = "Document Results",
+                navigateBack = { onNavigateBack() }
             )
         }
     ) {
@@ -61,17 +64,14 @@ fun ScanResultsScreen(
             }
         } else if (state.scanResults != null) {
             val scanResults = state.scanResults!!
+            val documents = scanResults.documents
 
-            Log.d("SCAN_RESULTS_SCREEN", "Rendering items. Count: ${scanResults.count}")
-            Log.d("SCAN_RESULTS_SCREEN", "Info list: ${scanResults.info}")
-
-            // Check if we have data
-            if (scanResults.count == 0 || scanResults.info.isEmpty()) {
+            if (documents.isNullOrEmpty()) {
                 Box(
                     modifier = it.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No detections found", color = Color.White)
+                    Text("No documents parsed", color = Color.White)
                 }
             } else {
                 LazyColumn(
@@ -79,23 +79,36 @@ fun ScanResultsScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(scanResults.info.size) { index ->
-                        Log.d("SCAN_RESULTS_ITEM", "Rendering item: $index")
-
-                        val info = scanResults.info[index]
-                        val imageUrl = if (index < imageUrls.size) imageUrls[index] else ""
-
-                        Log.d("SCAN_RESULTS_ITEM", "Title: ${info.title}, Image: $imageUrl")
-
-                        ScanCard(
-                            info1 = info.facts.getOrNull(0) ?: "N/A",
-                            info2 = info.facts.getOrNull(1) ?: "N/A",
-                            info3 = info.facts.getOrNull(2) ?: "N/A",
-                            title = info.title,
-                            description = info.summary,
-                            badge = info.badge,
-                            image = imageUrl
-                        )
+                    items(documents.size) { index ->
+                        val doc = documents[index]
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF1E1E2E)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Document #${index + 1}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White
+                                )
+                                doc.metadata?.get("source")?.let { source ->
+                                    Text(
+                                        text = "Source: $source",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                                Text(
+                                    text = doc.page_content.take(500) + if (doc.page_content.length > 500) "..." else "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.LightGray,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -20,14 +20,21 @@ fun NavGraphBuilder.chemistryNavigation(
     ) {
         composable(
             route = ChemistryNavigationScreens.ChemistryHomeScreen.route
-        ) {
+        ) { backStackEntry ->
+            val viewModel: com.cosmic_struck.stellar.stellar.scantext.presentation.scanScreen.ScanTextViewModel = 
+                androidx.hilt.navigation.compose.hiltViewModel()
+            val context = androidx.compose.ui.platform.LocalContext.current
+            
             ChemistryHomeScreen(
                 navHostController = navHostController,
-                navigateToScanText = {
-                    // Navigate to models screen for now
-                    navHostController.navigate(ChemistryNavigationScreens.ChemistryModels.route).apply {
-
-                    }
+                onUploadClick = {
+                    // Start document picker
+                },
+                onModelsClick = {
+                    navHostController.navigate(ChemistryNavigationScreens.ChemistryModels.route)
+                },
+                onDocumentSelected = { uri ->
+                    viewModel.uploadDocument(context, uri, "chemistry")
                 }
             )
         }

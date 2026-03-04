@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.CameraScanCaption
 import com.cosmic_struck.stellar.stellar.scantext.presentation.components.CameraScanText
@@ -109,7 +110,10 @@ fun ScanTextScreen(
                         context = context,
                         imageCapture = state.imageCapture,
                         onImageCaptured = { file ->
-                            viewModel.uploadImage(file)
+                            viewModel.uploadDocument(
+                                context,
+                                file.toUri()
+                            )
                         }
                     ) },
                     modifier = Modifier
