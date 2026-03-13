@@ -39,3 +39,5 @@ Flask-SQLAlchemy>=3.1.1
 Flask-JWT-Extended>=4.5.3
 email-validator>=2.1.0
 supabase>=2.0.0
+redis
+celery

@@ -7,6 +7,7 @@ import json
 from groq import Groq
 
 VALID_DOMAINS = ["biology", "chemistry", "physics", "history", "stellar", "space", "astronomy"]
+GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
 
 def get_groq_client():
     """Initialize and return a Groq client."""
@@ -72,7 +73,7 @@ Respond ONLY with a valid JSON object (no markdown, no code fences) in this exac
         client = get_groq_client()
         
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=GROQ_MODEL_NAME,
             messages=[
                 {
                     "role": "system",
