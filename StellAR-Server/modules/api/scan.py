@@ -190,7 +190,14 @@ Text:
             actual_sections = all_documents
             
         print("[DEBUG] Starting entity extraction for each section...", flush=True)
+        entities_extracted = 0
         for section in actual_sections:
+            if entities_extracted >= 3:
+                if "metadata" not in section:
+                    section["metadata"] = {}
+                section["metadata"]["entity"] = None
+                continue
+
             section_text = section.get("page_content", "")
             if not section_text:
                 if "metadata" not in section:
@@ -276,11 +283,14 @@ Important implementation rules:
                             
                 entity_data = json.loads(entity_result_text)
                         
+                entity_name = entity_data.get("entity")
                 if "metadata" not in section:
                     section["metadata"] = {}
-                section["metadata"]["entity"] = entity_data.get("entity")
+                section["metadata"]["entity"] = entity_name
                 
-                print(f"[DEBUG] Extracted entity: {entity_data.get('entity')}", flush=True)
+                print(f"[DEBUG] Extracted entity: {entity_name}", flush=True)
+                if entity_name:
+                    entities_extracted += 1
                         
             except Exception as e:
                 print(f"[DEBUG] Failed to extract entity via Groq: {e}", flush=True)
