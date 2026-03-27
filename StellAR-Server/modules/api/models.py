@@ -88,11 +88,12 @@ def download_model(model_id):
 @jwt_required()
 def generate_model():
     """Trigger 3D generation task"""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
+    file = request.files.get('file')
+    prompt = request.form.get('prompt', '')
+    
+    if not file and not prompt:
+        return jsonify({'error': 'Either an image file or a text prompt is required'}), 400
         
-    file = request.files['file']
-    prompt = request.form.get('prompt', 'planet') 
     name_input = request.form.get('name') 
     subject_input = request.form.get('subject', 'Astronomy') # Default subject
     
@@ -103,14 +104,17 @@ def generate_model():
     # Save temp input
     job_id = str(uuid.uuid4())
     output_dir = current_app.config.get('OUTPUT_DIR', 'models')
-    input_path = os.path.join(output_dir, f"temp_gen_input_{job_id}.png")
-    file.save(input_path)
+    
+    input_path = None
+    if file:
+        input_path = os.path.join(output_dir, f"temp_gen_input_{job_id}.png")
+        file.save(input_path)
     
     # Get user ID
     user_id = int(get_jwt_identity())
 
     thread = threading.Thread(target=run_generation_task, 
-                            args=(current_app._get_current_object(), job_id, input_path, user_id, name_input, subject_input))
+                            args=(current_app._get_current_object(), job_id, input_path, user_id, name_input, subject_input, prompt))
     thread.daemon = True
     thread.start()
     
@@ -128,40 +132,50 @@ def calculate_rarity():
     elif roll < 0.50: return "Rare", 50
     else: return "Common", 10
 
-def run_generation_task(app, job_id, image_path, user_id, user_provided_name=None, subject='Astronomy', metadata_override=None, uploader_id_override=None):
+def run_generation_task(app, job_id, image_path, user_id, user_provided_name=None, subject='Astronomy', prompt=None, metadata_override=None, uploader_id_override=None):
     """Background task for ComfyUI generation"""
     with app.app_context():
         try:
             comfy = app.comfy_client
-            
-            # 1. Upload Input Image to ComfyUI (for processing)
-            image_filename = comfy.upload_image(image_path)
-            
-            # --- SUPABASE: Upload Thumbnail ---
-            # Use the input image as the thumbnail
             from modules.supabase_service import supabase_service
             thumbnail_url = ""
-            if supabase_service.initialized:
-                try:
-                    # Upload input image to 'models' bucket as thumbnail
-                    thumb_name = f"thumb_{job_id}.png"
-                    thumbnail_url = supabase_service.upload_file("models", image_path, thumb_name)
-                except Exception as e:
-                    print(f"⚠️ Thumbnail upload failed: {e}")
-
-            # 2. Load Workflow
-            wf_path = os.path.join('workflows', 'hunyuan_workflow_api.json')
-            if not os.path.exists(wf_path):
-                wf_path = os.path.join('workflows', 'hunyuan_workflow.json')
-                
-            with open(wf_path, 'r') as f:
-                workflow = json.load(f)
-                
-            # 3. Modify Workflow
-            for node in workflow.values():
-                if node.get('class_type') == 'LoadImage':
-                    node['inputs']['image'] = image_filename
             
+            if image_path and os.path.exists(image_path):
+                # 1. Upload Input Image to ComfyUI (for processing)
+                image_filename = comfy.upload_image(image_path)
+                
+                # --- SUPABASE: Upload Thumbnail ---
+                # Use the input image as the thumbnail
+                if supabase_service.initialized:
+                    try:
+                        # Upload input image to 'models' bucket as thumbnail
+                        thumb_name = f"thumb_{job_id}.png"
+                        thumbnail_url = supabase_service.upload_file("models", image_path, thumb_name)
+                    except Exception as e:
+                        print(f"⚠️ Thumbnail upload failed: {e}")
+
+                # 2. Load Workflow
+                wf_path = os.path.join('workflows', 'hunyuan_workflow_api.json')
+                if not os.path.exists(wf_path):
+                    wf_path = os.path.join('workflows', 'hunyuan_workflow.json')
+                    
+                with open(wf_path, 'r') as f:
+                    workflow = json.load(f)
+                    
+                # 3. Modify Workflow
+                for node in workflow.values():
+                    if node.get('class_type') == 'LoadImage':
+                        node['inputs']['image'] = image_filename
+            else:
+                # Text-to-3D
+                wf_path = os.path.join('workflows', 'hunyuan_text_to_3d_workflow_api.json')
+                with open(wf_path, 'r') as f:
+                    workflow = json.load(f)
+                    
+                for node in workflow.values():
+                    if node.get('class_type') == 'TencentTextToModelNode':
+                        node['inputs']['prompt'] = prompt if prompt else "A detailed 3d model"
+
             target_prefix = f"gen_{job_id}"
             for node in workflow.values():
                 if 'filename_prefix' in node.get('inputs', {}):
@@ -198,7 +212,7 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                         # Prepare Metadata
                         final_metadata = {
                             "job_id": job_id,
-                            "prompt": "Generated"
+                            "prompt": prompt if prompt else "Generated via ComfyUI"
                         }
                         # Merge overrides
                         if metadata_override:
@@ -242,5 +256,5 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
         except Exception as e:
             print(f"Job {job_id} failed: {e}")
         finally:
-            if os.path.exists(image_path):
+            if image_path and os.path.exists(image_path):
                 os.remove(image_path)
