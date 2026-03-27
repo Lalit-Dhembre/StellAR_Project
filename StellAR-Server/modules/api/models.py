@@ -84,18 +84,22 @@ def download_model(model_id):
 
 # --- Generation Logic ---
 
+# Store generation results for synchronous waiting
+_generation_results = {}
+
 @models_bp.route('/models/generate', methods=['POST'])
-@jwt_required()
+@models_bp.route('/generate_model', methods=['POST'])
 def generate_model():
-    """Trigger 3D generation task"""
-    file = request.files.get('file')
+    """Trigger 3D generation task — synchronous: waits and returns .glb file"""
+    # Accept both 'file' and 'image' field names from mobile
+    file = request.files.get('file') or request.files.get('image')
     prompt = request.form.get('prompt', '')
     
     if not file and not prompt:
         return jsonify({'error': 'Either an image file or a text prompt is required'}), 400
         
     name_input = request.form.get('name') 
-    subject_input = request.form.get('subject', 'Astronomy') # Default subject
+    subject_input = request.form.get('subject', 'Astronomy')
     
     comfy_client = current_app.comfy_client
     if not comfy_client:
@@ -110,19 +114,25 @@ def generate_model():
         input_path = os.path.join(output_dir, f"temp_gen_input_{job_id}.png")
         file.save(input_path)
     
-    # Get user ID
-    user_id = int(get_jwt_identity())
+    # Use a threading event to wait for completion
+    done_event = threading.Event()
+    _generation_results[job_id] = {'event': done_event, 'glb_path': None, 'error': None}
 
     thread = threading.Thread(target=run_generation_task, 
-                            args=(current_app._get_current_object(), job_id, input_path, user_id, name_input, subject_input, prompt))
+                            args=(current_app._get_current_object(), job_id, input_path, 0, name_input, subject_input, prompt))
     thread.daemon = True
     thread.start()
     
-    return jsonify({
-        'job_id': job_id,
-        'status': 'processing',
-        'message': 'Generation started.'
-    })
+    # Wait synchronously for generation to complete (up to 15 minutes)
+    done_event.wait(timeout=900)
+    
+    result = _generation_results.pop(job_id, None)
+    if result and result.get('glb_path') and os.path.exists(result['glb_path']):
+        return send_file(result['glb_path'], as_attachment=True, download_name=f"{name_input or 'model'}.glb")
+    elif result and result.get('error'):
+        return jsonify({'error': str(result['error'])}), 500
+    else:
+        return jsonify({'error': 'Generation timed out or failed'}), 504
 
 def calculate_rarity():
     import random
@@ -135,6 +145,7 @@ def calculate_rarity():
 def run_generation_task(app, job_id, image_path, user_id, user_provided_name=None, subject='Astronomy', prompt=None, metadata_override=None, uploader_id_override=None):
     """Background task for ComfyUI generation"""
     with app.app_context():
+        dest_path = None
         try:
             comfy = app.comfy_client
             from modules.supabase_service import supabase_service
@@ -145,10 +156,8 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                 image_filename = comfy.upload_image(image_path)
                 
                 # --- SUPABASE: Upload Thumbnail ---
-                # Use the input image as the thumbnail
                 if supabase_service.initialized:
                     try:
-                        # Upload input image to 'models' bucket as thumbnail
                         thumb_name = f"thumb_{job_id}.png"
                         thumbnail_url = supabase_service.upload_file("models", image_path, thumb_name)
                     except Exception as e:
@@ -167,14 +176,16 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                     if node.get('class_type') == 'LoadImage':
                         node['inputs']['image'] = image_filename
             else:
-                # Text-to-3D
-                wf_path = os.path.join('workflows', 'hunyuan_text_to_3d_workflow_api.json')
+                # Text-to-3D (fully local: SD 1.5 text-to-image → Hunyuan3D image-to-3D)
+                wf_path = os.path.join('workflows', 'hunyuan_text_to_3d_local_api.json')
                 with open(wf_path, 'r') as f:
                     workflow = json.load(f)
                     
+                # Inject the user's text prompt into the positive prompt node
+                text_prompt = prompt if prompt else "A detailed 3d model, clean background, centered, studio lighting"
                 for node in workflow.values():
-                    if node.get('class_type') == 'TencentTextToModelNode':
-                        node['inputs']['prompt'] = prompt if prompt else "A detailed 3d model"
+                    if node.get('class_type') == 'CLIPTextEncode' and node.get('_meta', {}).get('title') == 'Positive Prompt':
+                        node['inputs']['text'] = text_prompt
 
             target_prefix = f"gen_{job_id}"
             for node in workflow.values():
@@ -191,41 +202,32 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
             
             if final_glb:
                 filename = os.path.basename(final_glb)
-                # Save to GENERATED_DIR
                 dest_path = os.path.join(app.config['GENERATED_DIR'], filename)
                 import shutil
                 shutil.move(final_glb, dest_path)
                 
-                # Determine Final Name
                 final_name = user_provided_name if user_provided_name else f"Generated Model {job_id[:8]}"
                 
                 # --- SUPABASE INTEGRATION ---
                 try:
                     if supabase_service.initialized:
-                        # Upload Model File
                         model_url = supabase_service.upload_file("models", dest_path, filename)
                         print(f"✓ Uploaded Model to Supabase: {model_url}")
                         
-                        # Calculate Rarity
                         rarity_name, xp_val = calculate_rarity()
                         
-                        # Prepare Metadata
                         final_metadata = {
                             "job_id": job_id,
                             "prompt": prompt if prompt else "Generated via ComfyUI"
                         }
-                        # Merge overrides
                         if metadata_override:
                             final_metadata.update(metadata_override)
 
-                        # Determine uploader
-                        final_uploader = str(uploader_id_override) if uploader_id_override else str(user_id) 
+                        final_uploader = str(uploader_id_override) if uploader_id_override else str(user_id)
 
-                        # Insert Record
-                        # Schema: model_name, description, model_url, rarity, xp_reward, metadata, model_subject, model_thumbnail, min_level
                         record = {
                             "model_name": final_name,
-                            "description": final_metadata.get('quiz_context', "Generated via ComfyUI"), # Use quiz text snippet if avail
+                            "description": final_metadata.get('quiz_context', "Generated via ComfyUI"),
                             "model_url": model_url,
                             "rarity": rarity_name,
                             "xp_reward": xp_val,
@@ -236,11 +238,6 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                             "metadata": final_metadata
                         }
                         
-                        # Note: uploader_id in new schema is UUID. 'user_id' from JWT was int (from SQLite).
-                        # If we are mixing systems, we might need a valid UUID. 
-                        # For now, generating a random one or handling it at DB level if nullable.
-                        # User schema says 'uploader_id' (uuid).
-                        
                         supabase_service.insert_record("models", record)
                         print(f"✓ Record inserted into Supabase DB")
                     else:
@@ -248,13 +245,19 @@ def run_generation_task(app, job_id, image_path, user_id, user_provided_name=Non
                         
                 except Exception as e:
                     print(f"⚠️ Supabase processing failed: {e}")
-                    # Fallback to local DB (using old schema? might fail if table changed)
-                    # We skip fallback for now as schema diverged too much.
+
+                # Signal success to the waiting endpoint
+                if job_id in _generation_results:
+                    _generation_results[job_id]['glb_path'] = dest_path
+                    _generation_results[job_id]['event'].set()
 
             print(f"Job {job_id} complete: {dest_path}")
                 
         except Exception as e:
             print(f"Job {job_id} failed: {e}")
+            if job_id in _generation_results:
+                _generation_results[job_id]['error'] = str(e)
+                _generation_results[job_id]['event'].set()
         finally:
             if image_path and os.path.exists(image_path):
                 os.remove(image_path)

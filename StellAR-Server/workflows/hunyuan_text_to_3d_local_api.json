@@ -1,0 +1,275 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "v1-5-pruned-emaonly.ckpt"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint (SD 1.5)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "text": "A detailed high quality 3D render of a planet, clean background, studio lighting, centered, single object",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt"
+    }
+  },
+  "3": {
+    "inputs": {
+      "text": "blurry, low quality, watermark, text, multiple objects, collage, split image",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    }
+  },
+  "4": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "5": {
+    "inputs": {
+      "seed": 0,
+      "steps": 30,
+      "cfg": 7.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "2",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "latent_image": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "6": {
+    "inputs": {
+      "samples": [
+        "5",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "10": {
+    "inputs": {
+      "model": "hunyuan3d-dit-v2-0-fp16.safetensors",
+      "attention_mode": "sdpa",
+      "cublas_ops": false
+    },
+    "class_type": "Hy3DModelLoader",
+    "_meta": {
+      "title": "Hy3DModelLoader"
+    }
+  },
+  "52": {
+    "inputs": {
+      "width": 518,
+      "height": 518,
+      "interpolation": "lanczos",
+      "method": "pad",
+      "condition": "always",
+      "multiple_of": 2,
+      "image": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "ImageResize+",
+    "_meta": {
+      "title": "Image Resize"
+    }
+  },
+  "55": {
+    "inputs": {
+      "mode": "base",
+      "use_jit": true
+    },
+    "class_type": "TransparentBGSession+",
+    "_meta": {
+      "title": "InSPyReNet TransparentBG"
+    }
+  },
+  "56": {
+    "inputs": {
+      "rembg_session": [
+        "55",
+        0
+      ],
+      "image": [
+        "52",
+        0
+      ]
+    },
+    "class_type": "ImageRemoveBackground+",
+    "_meta": {
+      "title": "Image Remove Background"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 0.8,
+      "width": 512,
+      "height": 512
+    },
+    "class_type": "SolidMask",
+    "_meta": {
+      "title": "SolidMask"
+    }
+  },
+  "133": {
+    "inputs": {
+      "mask": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "MaskToImage",
+    "_meta": {
+      "title": "Convert Mask to Image"
+    }
+  },
+  "64": {
+    "inputs": {
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "destination": [
+        "133",
+        0
+      ],
+      "source": [
+        "52",
+        0
+      ],
+      "mask": [
+        "56",
+        1
+      ]
+    },
+    "class_type": "ImageCompositeMasked",
+    "_meta": {
+      "title": "ImageCompositeMasked"
+    }
+  },
+  "141": {
+    "inputs": {
+      "guidance_scale": 5.5,
+      "steps": 50,
+      "seed": 123,
+      "scheduler": "FlowMatchEulerDiscreteScheduler",
+      "force_offload": true,
+      "pipeline": [
+        "10",
+        0
+      ],
+      "image": [
+        "52",
+        0
+      ],
+      "mask": [
+        "56",
+        1
+      ]
+    },
+    "class_type": "Hy3DGenerateMesh",
+    "_meta": {
+      "title": "Hy3DGenerateMesh"
+    }
+  },
+  "140": {
+    "inputs": {
+      "box_v": 1.01,
+      "octree_resolution": 384,
+      "num_chunks": 32000,
+      "mc_level": 0,
+      "mc_algo": "mc",
+      "enable_flash_vdm": true,
+      "force_offload": true,
+      "vae": [
+        "10",
+        1
+      ],
+      "latents": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "Hy3DVAEDecode",
+    "_meta": {
+      "title": "Hy3D VAE Decode"
+    }
+  },
+  "59": {
+    "inputs": {
+      "remove_floaters": true,
+      "remove_degenerate_faces": true,
+      "reduce_faces": true,
+      "max_facenum": 50000,
+      "smooth_normals": false,
+      "trimesh": [
+        "140",
+        0
+      ]
+    },
+    "class_type": "Hy3DPostprocessMesh",
+    "_meta": {
+      "title": "Hy3D Postprocess Mesh"
+    }
+  },
+  "17": {
+    "inputs": {
+      "filename_prefix": "3D/Hy3D_text2model",
+      "file_format": "glb",
+      "save_file": true,
+      "trimesh": [
+        "59",
+        0
+      ]
+    },
+    "class_type": "Hy3DExportMesh",
+    "_meta": {
+      "title": "Hy3DExportMesh"
+    }
+  }
+}
