@@ -3,6 +3,7 @@ package com.cosmic_struck.stellar.common.di
 import com.cosmic_struck.stellar.classroom.data.service.ClassroomModuleService
 import com.cosmic_struck.stellar.create_module.data.service.ModelGenerationService
 import com.cosmic_struck.stellar.stellar.scantext.data.remote.ScanService
+import com.cosmic_struck.stellar.stellar.pdfar.data.remote.PdfArService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -60,5 +61,16 @@ object APIModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ModelGenerationService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun providePdfArService(okHttpClient: OkHttpClient): PdfArService {
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(provideOkHttpClient())
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(PdfArService::class.java)
     }
 }

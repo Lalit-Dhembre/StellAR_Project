@@ -34,12 +34,14 @@ fun NavGraphBuilder.physicsNavigation(navHostController: NavHostController) {
             
             PhysicsHomeScreen(
                 navHostController = navHostController,
-                onUploadClick = { },
+                onUploadClick = { 
+                    navHostController.navigate(com.cosmic_struck.stellar.stellar.pdfar.presentation.navigation.PdfArNavigationScreens.PdfArMainScreen.createRoute("physics"))
+                },
                 onModelsClick = {
                     navHostController.navigate(PhysicsNavigationScreens.PhysicsModels.route)
                 },
                 onDocumentSelected = { uri ->
-                    viewModel.uploadDocument(context, uri, "physics")
+                    // Unused now
                 }
             )
         }

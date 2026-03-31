@@ -1,0 +1,102 @@
+plugins {
+    id 'com.android.library'
+}
+
+// Returns the hexadecimal code of the desired OpenGL version
+static def getGLVersionCode(String version) {
+    def versionCodes = [
+            'ES20': '0x00020000',
+            'ES30': '0x00030000',
+            'ES31': '0x00030001',
+            'ES32': '0x00030002'
+    ]
+    if (!versionCodes.containsKey(version)) {
+        throw new IllegalArgumentException("Version '${version}' is not valid. Valid versions are: ${versionCodes.keySet()}")
+    }
+    return versionCodes[version]
+}
+
+android {
+    namespace "com.raylib.raymob"
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 30
+        targetSdk 36
+
+        consumerProguardFiles "proguard-rules.pro"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+
+        // Manifest placeholders for the library manifest
+        manifestPlaceholders = [
+            'GL_VERSION_CODE': '0x00030000',
+            'APP_LIB_NAME': 'raymob',
+            'APP_ORIENTATION': 'landscape',
+            'APP_CATEGORY': 'DEFAULT',
+            'REQUIRE_INTERNET': 'false',
+            'REQUIRE_VIBRATION': 'false',
+            'REQUIRE_GYROSCOPE': 'false',
+            'REQUIRE_ACCELEROMETER': 'false'
+        ]
+
+        // Give to CMake the name of the library
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared",
+                          "-DPLATFORM=Android",
+                          "-DBUILD_EXAMPLES=OFF",
+                          "-DAPP_LIB_NAME=raymob",
+                          "-DGL_VERSION=ES30"
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            jniDebuggable true
+        }
+        release {
+            minifyEnabled false
+            debuggable false
+            jniDebuggable false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '4.1.0'
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
+    lint {
+        abortOnError false
+    }
+    packagingOptions {
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+    }
+}
+
+/*
+dependencies {
+}
+*/

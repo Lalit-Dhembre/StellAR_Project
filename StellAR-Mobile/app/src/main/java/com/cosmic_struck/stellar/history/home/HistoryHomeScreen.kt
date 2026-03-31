@@ -57,9 +57,7 @@ fun HistoryHomeScreen(
             HistoryUpperCaptions()
             Spacer(modifier = Modifier.height(48.dp))
             HistoryUploadButton(
-                onUploadClick = {
-                    documentPickerLauncher.launch("application/pdf")
-                }
+                onUploadClick = onUploadClick
             )
             Spacer(modifier = Modifier.height(16.dp))
             HistoryModelsButton(

@@ -65,9 +65,7 @@ fun ChemistryHomeScreen(
             ChemistryUpperCaptions()
             Spacer(modifier = Modifier.height(48.dp))
             ChemistryUploadButton(
-                onUploadClick = {
-                    documentPickerLauncher.launch("application/pdf")
-                }
+                onUploadClick = onUploadClick
             )
             Spacer(modifier = Modifier.height(16.dp))
             ChemistryModelsButton(

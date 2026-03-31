@@ -28,7 +28,7 @@ fun NavGraphBuilder.chemistryNavigation(
             ChemistryHomeScreen(
                 navHostController = navHostController,
                 onUploadClick = {
-                    // Start document picker
+                    navHostController.navigate(com.cosmic_struck.stellar.stellar.pdfar.presentation.navigation.PdfArNavigationScreens.PdfArMainScreen.createRoute("chemistry"))
                 },
                 onModelsClick = {
                     navHostController.navigate(ChemistryNavigationScreens.ChemistryModels.route)

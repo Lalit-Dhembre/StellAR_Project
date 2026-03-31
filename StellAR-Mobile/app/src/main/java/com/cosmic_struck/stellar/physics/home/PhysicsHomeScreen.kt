@@ -59,9 +59,7 @@ fun PhysicsHomeScreen(
             PhysicsUpperCaptions()
             Spacer(modifier = Modifier.height(48.dp))
             PhysicsUploadButton(
-                onUploadClick = {
-                    documentPickerLauncher.launch("application/pdf")
-                }
+                onUploadClick = onUploadClick
             )
             Spacer(modifier = Modifier.height(16.dp))
             PhysicsModelsButton(

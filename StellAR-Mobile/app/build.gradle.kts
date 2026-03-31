@@ -60,6 +60,11 @@ android {
         prefab = true
         buildConfig = true
     }
+    packaging {
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+        }
+    }
 }
 
 dependencies {
@@ -155,6 +160,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
 
     implementation(project(":chemLab"))
+    implementation(project(":physicsLab"))
     implementation(fileTree(mapOf(
         "dir" to "${rootProject.project(":chemLab").projectDir}/libs",
         "include" to listOf("*.jar")

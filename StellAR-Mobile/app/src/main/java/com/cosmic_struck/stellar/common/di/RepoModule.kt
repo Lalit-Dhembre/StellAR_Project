@@ -6,6 +6,9 @@ import com.cosmic_struck.stellar.classroom.data.service.ClassroomModuleService
 import com.cosmic_struck.stellar.stellar.scantext.data.remote.ScanService
 import com.cosmic_struck.stellar.stellar.scantext.data.repository.ScanImageRepoImpl
 import com.cosmic_struck.stellar.stellar.scantext.domain.repository.ScanImageRepo
+import com.cosmic_struck.stellar.stellar.pdfar.domain.repository.PdfArRepository
+import com.cosmic_struck.stellar.stellar.pdfar.data.repository.PdfArRepositoryImpl
+import com.cosmic_struck.stellar.stellar.pdfar.data.remote.PdfArService
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,5 +32,11 @@ object RepoModule {
         return ClassroomModuleServiceRepositoryImpl(
             classroomModuleService = api
         )
+    }
+
+    @Provides
+    @Singleton
+    fun providePdfArRepository(api: PdfArService): PdfArRepository {
+        return PdfArRepositoryImpl(api)
     }
 }

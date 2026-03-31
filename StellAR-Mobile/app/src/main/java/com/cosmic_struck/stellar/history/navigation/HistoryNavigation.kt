@@ -33,7 +33,9 @@ fun NavGraphBuilder.historyNavigation(navHostController: NavHostController) {
             
             HistoryHomeScreen(
                 navHostController = navHostController,
-                onUploadClick = { },
+                onUploadClick = { 
+                    navHostController.navigate(com.cosmic_struck.stellar.stellar.pdfar.presentation.navigation.PdfArNavigationScreens.PdfArMainScreen.createRoute("history"))
+                },
                 onModelsClick = {
                     navHostController.navigate(HistoryNavigationScreens.HistoryModels.route)
                 },

@@ -27,7 +27,7 @@ fun NavGraphBuilder.biologyNavigation(
             BiologyHomeScreen(
                 navHostController = navHostController,
                 onUploadClick = {
-                    // Start document picker instead of navigating to scan_image
+                    navHostController.navigate(com.cosmic_struck.stellar.stellar.pdfar.presentation.navigation.PdfArNavigationScreens.PdfArMainScreen.createRoute("biology"))
                 },
                 onModelsClick = {
                     navHostController.navigate(BiologyNavigationScreens.BiologyModels.route)

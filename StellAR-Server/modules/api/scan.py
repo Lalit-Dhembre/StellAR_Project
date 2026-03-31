@@ -7,7 +7,10 @@ from modules.models import db, User
 # LangChain imports
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, UnstructuredImageLoader
 from modules.api.domain_validator import validate_domain, get_groq_client, GROQ_MODEL_NAME
+from modules.generation.pipeline import fetch_wikipedia_image
 import json
+
+MAX_SECTIONS = 3
 
 scan_bp = Blueprint('scan', __name__, url_prefix='/api/scan')
 
@@ -298,14 +301,37 @@ Important implementation rules:
                     section["metadata"] = {}
                 section["metadata"]["entity"] = None
             
-        # 5. Construct Final Response
+        # 5. Filter: keep only sections with a valid entity name
+        valid_sections = [
+            sec for sec in actual_sections
+            if sec.get("metadata", {}).get("entity")
+        ]
+        
+        # Cap at MAX_SECTIONS
+        valid_sections = valid_sections[:MAX_SECTIONS]
+        print(f"[DEBUG] {len(valid_sections)} valid sections after filtering (max {MAX_SECTIONS}).", flush=True)
+        
+        # 6. Fetch Wikipedia images for each valid entity
+        for section in valid_sections:
+            entity_name = section["metadata"]["entity"]
+            try:
+                image_url = fetch_wikipedia_image(entity_name)
+                section["metadata"]["image_url"] = image_url
+                print(f"[DEBUG] Image for '{entity_name}': {image_url}", flush=True)
+            except Exception as img_err:
+                print(f"[DEBUG] Failed to fetch image for '{entity_name}': {img_err}", flush=True)
+                section["metadata"]["image_url"] = None
+        
+        # 7. Construct Final Response
         response_data = {
             'success': True,
             'domain_match': True,
-            'documents': actual_sections,
-            'count': len(actual_sections)
+            'documents': valid_sections,
+            'count': len(valid_sections),
+            'max_sections': MAX_SECTIONS,
+            'message': f'Only up to {MAX_SECTIONS} sections can be extracted from any given PDF.'
         }
-        print(f"[DEBUG] Returning {len(actual_sections)} document sections.", flush=True)
+        print(f"[DEBUG] Returning {len(valid_sections)} document sections.", flush=True)
         
         return jsonify(response_data), 200
         

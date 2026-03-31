@@ -26,6 +26,7 @@ import io.github.jan.supabase.auth.auth
 import com.cosmic_struck.stellar.onboarding.presentation.OnboardingScreen
 import com.cosmic_struck.stellar.physics.navigation.physicsNavigation
 import com.cosmic_struck.stellar.history.navigation.historyNavigation
+import com.cosmic_struck.stellar.stellar.pdfar.presentation.navigation.pdfArNavigation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +90,9 @@ fun MainNavGraph(
                 
                 StellarHomeScreen(
                     navHostController = navHostController,
-                    onUploadClick = { },
+                    onUploadClick = { 
+                        navHostController.navigate(com.cosmic_struck.stellar.stellar.pdfar.presentation.navigation.PdfArNavigationScreens.PdfArMainScreen.createRoute("stellar"))
+                    },
                     onModelsClick = {
                         navHostController.navigate("models") 
                     },
@@ -115,6 +118,15 @@ fun MainNavGraph(
             modelNavGraph(navHostController)
             classroomGraph(navHostController)
             createModuleNavigation(navHostController)
+            
+            pdfArNavigation(
+                navHostController = navHostController,
+                onNavigateToARViewer = { file ->
+                    // The pdf model is ready at file.absolutePath
+                    android.util.Log.d("PdfArNavigation", "Model downloaded to: \${file.absolutePath}")
+                    // navHostController.navigate(...) to the AR Screen when ready
+                }
+            )
 
         }
     }

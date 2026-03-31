@@ -66,7 +66,7 @@
     "Outputpath": "L:/StellAR/StellAR-Mobile/chemLab/src/main/jniLibs/arm64-v8a/libil2cpp.so",
     "DontDeployBaselib": false,
     "Verbose": false,
-    "ToolChainPath": "C:/Progra~1/Unity/Hub/Editor/6000.2.13f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK",
+    "ToolChainPath": "C:/Users/COSMIC~1/AppData/Local/Android/Sdk/ndk/27.0.12077973",
     "Forcerebuild": false,
     "DisableBeeBuilder": false,
     "Libil2cppStatic": false,
