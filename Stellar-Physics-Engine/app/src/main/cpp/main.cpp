@@ -18,14 +18,15 @@
 enum EngineState { PAUSED, PLAYING, SUMMARY };
 
 // Transient visual effects for collisions
-struct Explosion {
-  Vector3 position; // Center of the explosion in world space
-  float radius;     // Current expanding radius
-  float maxRadius;  // Maximum radius before the explosion dies
-  float alpha;      // Opacity (1.0 = fully visible, 0.0 = invisible/dead)
-  bool isAlive;     // Whether this explosion is still animating
+struct Fragment {
+  Vector3 position;
+  Vector3 velocity;
+  float size;
+  float life; // 1.0 to 0.0
+  Color color;
+  bool isAlive;
 };
-std::vector<Explosion> activeExplosions;
+std::vector<Fragment> activeFragments;
 
 int main() {
   const int screenWidth = 1920;
@@ -65,7 +66,7 @@ int main() {
   initialPlanets.reserve(16);
   activePlanets.reserve(16);
   planetModels.reserve(16);
-  activeExplosions.reserve(32);
+  activeFragments.reserve(1024);
 
   // Solar System Initialization
   initialPlanets = {
@@ -257,26 +258,75 @@ int main() {
             float collisionThreshold = combinedRadii * 0.8f;
 
             if (distSqr < (collisionThreshold * collisionThreshold)) {
-              activePlanets[i].isAlive = false;
-              activePlanets[j].isAlive = false;
+              // Determine survivor and victim
+              int survivorIndex = -1;
+              int victimIndex = -1;
 
-              if (selectedPlanet == &activePlanets[i] || selectedPlanet == &activePlanets[j]) {
+              if (i == 0 || j == 0) { // Sun is involved
+                survivorIndex = 0;
+                victimIndex = (i == 0) ? j : i;
+              } else if (activePlanets[i].mass >= activePlanets[j].mass) {
+                survivorIndex = i;
+                victimIndex = j;
+              } else {
+                survivorIndex = j;
+                victimIndex = i;
+              }
+
+              Planet& survivor = activePlanets[survivorIndex];
+              Planet& victim = activePlanets[victimIndex];
+
+              victim.isAlive = false;
+              if (selectedPlanet == &victim) {
                 selectedPlanet = nullptr;
               }
 
-              // Spawn Explosion at midpoint
-              Vector3 midpoint = {
-                  (activePlanets[i].position.x + activePlanets[j].position.x) / 2.0f,
-                  (activePlanets[i].position.y + activePlanets[j].position.y) / 2.0f,
-                  (activePlanets[i].position.z + activePlanets[j].position.z) / 2.0f};
+              // Physics update for survivor (if not the Sun)
+              if (survivorIndex != 0) {
+                // Conservation of momentum: v_new = (m1*v1 + m2*v2) / (m1+m2)
+                Vector3 p1 = Vector3Scale(survivor.velocity, survivor.mass);
+                Vector3 p2 = Vector3Scale(victim.velocity, victim.mass);
+                Vector3 totalMomentum = Vector3Add(p1, p2);
+                float totalMass = survivor.mass + victim.mass;
+                survivor.velocity = Vector3Scale(totalMomentum, 1.0f / totalMass);
+              }
 
-              Explosion exp;
-              exp.position = midpoint;
-              exp.radius = combinedRadii * 0.5f; 
-              exp.maxRadius = combinedRadii * 3.0f; 
-              exp.alpha = 1.0f;         
-              exp.isAlive = true;
-              activeExplosions.push_back(exp);
+              // Mass and Radius growth
+              survivor.mass += victim.mass;
+              if (survivor.mass > survivor.massMax) survivor.massMax = survivor.mass * 1.5f; // expand slider bound
+              
+              float newVolume = (survivor.radius * survivor.radius * survivor.radius) + 
+                                (victim.radius * victim.radius * victim.radius);
+              survivor.radius = cbrt(newVolume);
+              if (survivor.radius > survivor.radiusMax) survivor.radiusMax = survivor.radius * 1.5f;
+
+              // Spawn Fragments at victim's position
+              int numFragments = 30 + GetRandomValue(0, 20);
+              for (int f = 0; f < numFragments; f++) {
+                Fragment frag;
+                frag.position = victim.position;
+                
+                // Random outward velocity plus inherited velocity
+                Vector3 randDir = {
+                  (float)GetRandomValue(-100, 100) / 100.0f,
+                  (float)GetRandomValue(-100, 100) / 100.0f,
+                  (float)GetRandomValue(-100, 100) / 100.0f
+                };
+                randDir = Vector3Normalize(randDir);
+                
+                // Slowed down fragment spread for more cinematic space debris
+                float speed = (float)GetRandomValue(2, 8) + (Vector3Length(victim.velocity) * 0.15f);
+                
+                // Inherit only a fraction of the victim's velocity
+                Vector3 baseVelocity = Vector3Scale(victim.velocity, 0.4f);
+                frag.velocity = Vector3Add(baseVelocity, Vector3Scale(randDir, speed));
+                
+                frag.size = victim.radius * ((float)GetRandomValue(10, 30) / 100.0f);
+                frag.life = 1.0f;
+                frag.color = victim.tint;
+                frag.isAlive = true;
+                activeFragments.push_back(frag);
+              }
             }
           }
         }
@@ -326,35 +376,59 @@ int main() {
       }
     }
 
-    // Selection Halo
-    if (selectedPlanet != nullptr) {
-      DrawSphereWires(selectedPlanet->position, selectedPlanet->radius * 1.1f, 16, 16, YELLOW);
-    }
+    // Fragment Rendering
+    for (size_t f = 0; f < activeFragments.size(); f++) {
+      if (!activeFragments[f].isAlive) continue;
 
-    // Explosion Rendering
-    BeginBlendMode(BLEND_ADDITIVE);
-    for (size_t e = 0; e < activeExplosions.size(); e++) {
-      if (!activeExplosions[e].isAlive) continue;
-
-      activeExplosions[e].radius += 3.0f * dt;
-      activeExplosions[e].alpha -= 0.5f * dt;
-
-      if (activeExplosions[e].alpha <= 0.0f || activeExplosions[e].radius >= activeExplosions[e].maxRadius) {
-        activeExplosions[e].isAlive = false;
-        continue;
+      if (currentState == PLAYING) {
+        activeFragments[f].position = Vector3Add(activeFragments[f].position, Vector3Scale(activeFragments[f].velocity, dt));
+        activeFragments[f].life -= dt * 0.5f; // life lives for 2 seconds
+        
+        if (activeFragments[f].life <= 0.0f) {
+           activeFragments[f].isAlive = false;
+           continue;
+        }
       }
 
-      unsigned char byteAlpha = (unsigned char)(activeExplosions[e].alpha * 255.0f);
-      DrawSphereWires(activeExplosions[e].position, activeExplosions[e].radius, 8, 8, Color{255, 161, 0, byteAlpha});
-      DrawSphereWires(activeExplosions[e].position, activeExplosions[e].radius * 0.6f, 8, 8, Color{255, 255, 0, byteAlpha});
+      Color renderColor = activeFragments[f].color;
+      renderColor.a = (unsigned char)(activeFragments[f].life * 255.0f);
+      DrawCubeV(activeFragments[f].position, Vector3{activeFragments[f].size, activeFragments[f].size, activeFragments[f].size}, renderColor);
     }
-    EndBlendMode();
 
     // Pool Cleanup
-    activeExplosions.erase(std::remove_if(activeExplosions.begin(), activeExplosions.end(), 
-        [](const Explosion &e) { return !e.isAlive; }), activeExplosions.end());
+    activeFragments.erase(std::remove_if(activeFragments.begin(), activeFragments.end(), 
+        [](const Fragment &f) { return !f.isAlive; }), activeFragments.end());
 
     EndMode3D();
+
+    // Modern 2D HUD Selection Target
+    if (selectedPlanet != nullptr) {
+      Vector2 p = GetWorldToScreen(selectedPlanet->position, camera);
+      
+      // Calculate screen radius based on distance
+      Vector3 edgeWorld = Vector3Add(selectedPlanet->position, Vector3Scale(camera.up, selectedPlanet->radius * 1.5f));
+      Vector2 edgeScreen = GetWorldToScreen(edgeWorld, camera);
+      float circleRadius = Vector2Distance(p, edgeScreen);
+      if (circleRadius < 25.0f) circleRadius = 25.0f; // Minimum size for visibility
+      if (circleRadius > 300.0f) circleRadius = 300.0f; // Max size
+
+      float rot = GetTime() * 80.0f; // degrees per second
+      Color hudColor = { 0, 220, 255, 210 };
+      
+      DrawRing(p, circleRadius, circleRadius + 2.0f, rot, rot + 45.0f, 16, hudColor);
+      DrawRing(p, circleRadius, circleRadius + 2.0f, rot + 90.0f, rot + 135.0f, 16, hudColor);
+      DrawRing(p, circleRadius, circleRadius + 2.0f, rot + 180.0f, rot + 225.0f, 16, hudColor);
+      DrawRing(p, circleRadius, circleRadius + 2.0f, rot + 270.0f, rot + 315.0f, 16, hudColor);
+      
+      // Outer crosshairs
+      DrawLineEx({p.x - circleRadius - 15, p.y}, {p.x - circleRadius - 5, p.y}, 2.0f, hudColor);
+      DrawLineEx({p.x + circleRadius + 5, p.y}, {p.x + circleRadius + 15, p.y}, 2.0f, hudColor);
+      DrawLineEx({p.x, p.y - circleRadius - 15}, {p.x, p.y - circleRadius - 5}, 2.0f, hudColor);
+      DrawLineEx({p.x, p.y + circleRadius + 5}, {p.x, p.y + circleRadius + 15}, 2.0f, hudColor);
+      
+      DrawText("TARGET LOCKED", (int)(p.x + circleRadius + 15), (int)(p.y - 10), 12, hudColor);
+      DrawText(selectedPlanet->name.c_str(), (int)(p.x + circleRadius + 15), (int)(p.y + 4), 18, WHITE);
+    }
 
     // Planet Controls Panel
     {
@@ -409,7 +483,7 @@ int main() {
         toastTimer = 0.0f;
         currentState = PAUSED;
         activePlanets = initialPlanets;
-        activeExplosions.clear();
+        activeFragments.clear();
       }
     }
 
