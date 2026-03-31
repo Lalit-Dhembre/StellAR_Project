@@ -23,12 +23,12 @@ def generate_embedding(text: str):
     """
     try:
         import ollama
-        response = ollama.embeddings(model='nomic-embed-text', prompt=text)
-        return response['embedding']
+        response = ollama.embeddings(model='all-minilm', prompt=text)
+        return response['embedding'][:384] # Ensure 384 dimensions
     except Exception as e:
         print(f"[Tasks] Fallback embedding used for {text} due to: {e}")
-        # Return a zero vector of typical dimensionality (768 for nomic/bert)
-        return [0.0] * 768
+        # Return a zero vector of typical dimensionality (384 for all-minilm)
+        return [0.0] * 384
 
 @celery_app.task(bind=True, name='modules.tasks.generate_3d_asset_task')
 def generate_3d_asset_task(self, entity_name: str):
@@ -97,11 +97,16 @@ def generate_3d_asset_task(self, entity_name: str):
             
             print(f"[Celery] Inserting metadata into 'assets' table")
             supabase_service.insert_record("assets", data)
-            print(f"[Celery] Task {self.request.id} finished successfully!")
+            task_id = self.request.id if self.request and hasattr(self.request, 'id') else 'local'
+            print(f"[Celery] Task {task_id} finished successfully!")
             
             return {"status": "completed", "model_url": model_url, "entity": entity_name}
             
     except Exception as e:
         print(f"[Celery] Task Failed: {e}")
-        self.update_state(state="FAILURE", meta={"error": str(e)})
+        try:
+            if self.request and hasattr(self.request, 'id') and self.request.id:
+                self.update_state(state="FAILURE", meta={"error": str(e)})
+        except Exception as update_err:
+            print(f"[Celery] Failed to update state: {update_err}")
         raise e

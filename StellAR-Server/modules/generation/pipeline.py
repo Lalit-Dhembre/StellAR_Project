@@ -54,7 +54,10 @@ def validate_image(image_url: str):
         return None
         
     try:
-        response = requests.get(image_url, stream=True, timeout=10)
+        headers = {
+            "User-Agent": "StellAR/1.0 (https://github.com/Lalit-Dhembre/StellAR_Project; contact@stellar.app)"
+        }
+        response = requests.get(image_url, stream=True, headers=headers, timeout=10)
         response.raise_for_status()
         
         content = response.content

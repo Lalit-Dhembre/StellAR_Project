@@ -55,7 +55,7 @@ class PdfArViewModel @Inject constructor(
             repository.resolveEntity(entityName)
                 .onSuccess { response ->
                     if (response.status == "ready" && response.modelUrl != null) {
-                        downloadModel(response.modelUrl, entityName, cacheDir)
+                        _uiState.value = PdfArUiState.ModelReady(response.modelUrl, entityName)
                     } else if (response.status == "processing" && response.taskId != null) {
                         pollTaskStatus(response.taskId, entityName, cacheDir)
                     } else {
@@ -71,13 +71,13 @@ class PdfArViewModel @Inject constructor(
     private suspend fun pollTaskStatus(taskId: String, entityName: String, cacheDir: File) {
         var isCompleted = false
         var attempts = 0
-        while (!isCompleted && attempts < 30) { // Max 2 minutes (30 * 4s)
+        while (!isCompleted && attempts < 900) { // Max 1 hour (900 * 4s)
             delay(4000) // Poll every 4 seconds
             repository.getTaskStatus(taskId)
                 .onSuccess { response ->
                     if (response.status == "completed" && response.modelUrl != null) {
                         isCompleted = true
-                        downloadModel(response.modelUrl, entityName, cacheDir)
+                        _uiState.value = PdfArUiState.ModelReady(response.modelUrl, entityName)
                     } else if (response.status == "failed") {
                         isCompleted = true
                         _uiState.value = PdfArUiState.Error("Model generation failed on server")
@@ -94,20 +94,7 @@ class PdfArViewModel @Inject constructor(
         }
     }
 
-    private suspend fun downloadModel(url: String, entityName: String, cacheDir: File) {
-        val destFile = File(cacheDir, "${entityName.replace(" ", "_")}.glb")
-        if (destFile.exists()) {
-            _uiState.value = PdfArUiState.ModelReady(destFile)
-            return
-        }
-        repository.downloadModel(url, destFile)
-            .onSuccess { file ->
-                _uiState.value = PdfArUiState.ModelReady(file)
-            }
-            .onFailure {
-                _uiState.value = PdfArUiState.Error(it.message ?: "Error downloading model")
-            }
-    }
+
 
     fun resetState() {
         if (_uiState.value !is PdfArUiState.Uploading && _uiState.value !is PdfArUiState.GeneratingModel) {

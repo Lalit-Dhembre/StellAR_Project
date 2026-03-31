@@ -121,10 +121,9 @@ fun MainNavGraph(
             
             pdfArNavigation(
                 navHostController = navHostController,
-                onNavigateToARViewer = { file ->
-                    // The pdf model is ready at file.absolutePath
-                    android.util.Log.d("PdfArNavigation", "Model downloaded to: \${file.absolutePath}")
-                    // navHostController.navigate(...) to the AR Screen when ready
+                onNavigateToARViewer = { url, name ->
+                    val encodedUrl = android.net.Uri.encode(url)
+                    navHostController.navigate(com.cosmic_struck.stellar.stellar.models.presentation.navigation.StellarModelScreen.ModelScreen.route + "/$encodedUrl/$name")
                 }
             )
 

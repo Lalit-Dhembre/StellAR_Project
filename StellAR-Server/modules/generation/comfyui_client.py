@@ -57,7 +57,7 @@ class ComfyUIClient:
             print(f"✗ Image upload error: {e}")
             return None
     
-    def wait_for_completion(self, target_file_pattern, timeout=600):
+    def wait_for_completion(self, target_file_pattern, timeout=3600):
         """Wait for ComfyUI to generate the file"""
         print(f"Waiting for file generation: {target_file_pattern}")
         start_time = time.time()

@@ -18,7 +18,7 @@ import java.io.File
 fun PdfArScreen(
     domain: String,
     onNavigateBack: () -> Unit,
-    onModelReady: (File) -> Unit,
+    onModelReady: (String, String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PdfArViewModel = hiltViewModel()
 ) {
@@ -35,8 +35,9 @@ fun PdfArScreen(
             )
             viewModel.clearError()
         } else if (uiState is PdfArUiState.ModelReady) {
-            val file = (uiState as PdfArUiState.ModelReady).modelFile
-            onModelReady(file)
+            val url = (uiState as PdfArUiState.ModelReady).modelUrl
+            val name = (uiState as PdfArUiState.ModelReady).entityName
+            onModelReady(url, name)
             viewModel.resetState() // reset so if they come back, it's idle or ready
         }
     }

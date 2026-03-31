@@ -1,8 +1,11 @@
 from flask import Blueprint, request, jsonify
 from modules.tasks import generate_3d_asset_task
 from modules.supabase_service import supabase_service
+import uuid
 
 resolve_bp = Blueprint('resolve_bp', __name__)
+
+local_tasks = {}
 
 # Mock function for now, wait, the prompt says:
 # "Queries assets DB for existing high-similarity embeddings (> 0.8)."
@@ -11,21 +14,20 @@ resolve_bp = Blueprint('resolve_bp', __name__)
 def get_entity_embedding(entity: str):
     try:
         import ollama
-        response = ollama.embeddings(model='nomic-embed-text', prompt=entity)
-        return response['embedding']
+        response = ollama.embeddings(model='all-minilm', prompt=entity)
+        return response['embedding'][:384] # Ensure 384 dimensions
     except:
-        return [0.0] * 768
+        return None
 
 def vector_similarity_search(embedding):
     """
     Search Supabase `assets` table using match_assets RPC or similar.
-    If match_assets doesn't exist, this is a fallback placeholder.
     """
+    if not embedding:
+        return None
+        
     try:
         supabase_service.initialize()
-        # To do vector math in supabase:
-        # response = supabase_service.client.rpc('match_assets', {'query_embedding': embedding, 'match_threshold': 0.8, 'match_count': 1}).execute()
-        # For safety, let's just attempt it. If it fails, return None (triggering generation)
         response = supabase_service.client.rpc('match_assets', {
             'query_embedding': embedding, 
             'match_threshold': 0.8, 
@@ -38,15 +40,21 @@ def vector_similarity_search(embedding):
             
     except Exception as e:
         print(f"[Resolve API] Similarity search failed or RPC missing: {e}")
-        
-    # Also attempt naive keyword match just in case
-    try:
-         query = supabase_service.client.table('assets').select('*').limit(1).execute()
-         # Actually just check keyword
-         pass
-    except:
-         pass
          
+    return None
+
+def keyword_search(entity: str):
+    """
+    Fallback exact keyword search in Supabase.
+    """
+    try:
+        supabase_service.initialize()
+        response = supabase_service.client.table('assets').select('*').ilike('keyword', entity).limit(1).execute()
+        data = response.data
+        if data and len(data) > 0:
+            return data[0]
+    except Exception as e:
+        print(f"[Resolve API] Keyword search failed: {e}")
     return None
 
 @resolve_bp.route('/resolve-entity', methods=['POST'])
@@ -68,6 +76,10 @@ def resolve_entity():
     
     # 2. Vector search in assets DB
     match = vector_similarity_search(embedding)
+    
+    # 2.5 Fallback to keyword search
+    if not match:
+        match = keyword_search(entity)
     
     # 3. If exact/high-similarity match found
     if match and match.get('model_url'):
@@ -94,13 +106,22 @@ def resolve_entity():
     except Exception as e:
         print(f"[Resolve API] Redis/Celery unavailable: {e}. Falling back to background thread.")
         import threading
-        task_id = f"local_thread_{hash(entity)}"
+        task_id = f"local_thread_{uuid.uuid4().hex}"
+        local_tasks[task_id] = {"status": "processing", "task_id": task_id}
         
         def run_fallback():
             try:
-                generate_3d_asset_task(entity)
+                result = generate_3d_asset_task(entity)
+                local_tasks[task_id] = {
+                    "status": "completed",
+                    "model_url": result.get("model_url", "")
+                }
             except Exception as thread_err:
                 print(f"[Resolve API] Fallback thread failed: {thread_err}")
+                local_tasks[task_id] = {
+                    "status": "failed",
+                    "error": str(thread_err)
+                }
                 
         thread = threading.Thread(target=run_fallback)
         thread.daemon = True
@@ -118,9 +139,8 @@ def get_task_status(task_id):
     Polls Celery for the task status.
     """
     if task_id.startswith("local_thread_"):
-        # We don't have a reliable way to track local threads easily without a DB.
-        # Just tell the client it's processing so they keep polling, or let them timeout if it fails.
-        # A better production solution would be storing the task status in SQLite/Supabase.
+        if task_id in local_tasks:
+            return jsonify(local_tasks[task_id])
         return jsonify({
             "status": "processing",
             "task_id": task_id
