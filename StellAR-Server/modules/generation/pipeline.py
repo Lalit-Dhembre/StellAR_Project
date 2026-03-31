@@ -20,8 +20,12 @@ def fetch_wikipedia_image(entity: str) -> str:
         "pithumbsize": 500
     }
     
+    headers = {
+        "User-Agent": "StellAR/1.0 (https://github.com/Lalit-Dhembre/StellAR_Project; contact@stellar.app)"
+    }
+    
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
         response.raise_for_status()
         data = response.json()
         pages = data.get("query", {}).get("pages", {})
