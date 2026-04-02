@@ -32,3 +32,7 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Debug logs and API test dumps
+ai_logs*.txt
+models.json

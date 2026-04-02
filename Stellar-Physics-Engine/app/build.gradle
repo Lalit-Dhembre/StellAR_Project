@@ -54,6 +54,13 @@ android {
         buildConfigField("boolean", "FEATURE_DISPLAY_IMMERSIVE", project.properties['display.immersive'] ?: "false")
         buildConfigField("boolean", "FEATURE_DISPLAY_INTO_CUTOUT", project.properties['display.into_cutout'] ?: "false")
 
+        // Gemini API key from local.properties (never committed to git)
+        def localProps = new Properties()
+        def localPropsFile = rootProject.file('local.properties')
+        if (localPropsFile.exists()) localProps.load(localPropsFile.newDataInputStream())
+        buildConfigField("String", "GEMINI_API_KEY", "\"${localProps.getProperty('GEMINI_API_KEY', '')}\"")
+
+
         // Substitution variables for the manifest
         manifestPlaceholders = [
             'GL_VERSION_CODE': getGLVersionCode(project.properties['gl.version']) ?: "0x00020000",
@@ -99,6 +106,7 @@ android {
         // Modify the package name and library name in other java classes
         updateFile("src/main/java/com/raylib/raymob/DisplayManager.java", "package com.raylib.raymob;", "package " + project.properties['app.application_id'] + ";")
         updateFile("src/main/java/com/raylib/raymob/SoftKeyboard.java", "package com.raylib.raymob;", "package " + project.properties['app.application_id'] + ";")
+        updateFile("src/main/java/com/raylib/raymob/AINarrator.java", "package com.raylib.raymob;", "package " + project.properties['app.application_id'] + ";")
 
         // Modify the package name in proguard-rules.pro
         updateFile("proguard-rules.pro", "com.raylib.raymob", project.properties['app.application_id'])
@@ -119,6 +127,7 @@ android {
         // Restore the package name and library name in other java classes
         updateFile("src/main/java/com/raylib/raymob/DisplayManager.java", "package " + project.properties['app.application_id'] + ";", "package com.raylib.raymob;")
         updateFile("src/main/java/com/raylib/raymob/SoftKeyboard.java", "package " + project.properties['app.application_id'] + ";", "package com.raylib.raymob;")
+        updateFile("src/main/java/com/raylib/raymob/AINarrator.java", "package " + project.properties['app.application_id'] + ";", "package com.raylib.raymob;")
 
         // Restore the package name in proguard-rules.pro
         updateFile("proguard-rules.pro", project.properties['app.application_id'], "com.raylib.raymob")
