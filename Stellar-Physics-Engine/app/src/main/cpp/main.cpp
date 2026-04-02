@@ -129,7 +129,7 @@ int main() {
   InitAudioDevice();
   Music ambientMusic = LoadMusicStream("assets/ambient_space.mp3");
   ambientMusic.looping = true;
-  SetMusicVolume(ambientMusic, 0.04f);
+  SetMusicVolume(ambientMusic, 0.025f);
   PlayMusicStream(ambientMusic);
 
   // ── Engine State ───────────────────────────────────────────────────
