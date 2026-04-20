@@ -186,8 +186,8 @@ def fetch_wikipedia_images(title: str) -> List[Dict[str, Any]]:
     return results[:3]
 
 def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
-    # Requires GOOGLE_API_KEY and GOOGLE_CX
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    # Requires GOOGLE_CUSTOM_SEARCH and GOOGLE_CX
+    api_key = os.environ.get("GOOGLE_CUSTOM_SEARCH")
     cx = os.environ.get("GOOGLE_CX")
     if not api_key or not cx:
         logger.warning("Google API keys not found. Skipping Google fallback.")
