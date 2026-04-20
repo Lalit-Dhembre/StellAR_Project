@@ -2,43 +2,57 @@ package com.cosmic_struck.stellar.stellar.pdfar.data.models
 
 import com.google.gson.annotations.SerializedName
 
-data class Section(
-    val id: String,
-    val title: String,
-    val entities: List<String>,
-    val imageUrl: String? = null
-)
-
+// Models for POST /api/rag/process-content
 data class ProcessPdfResponse(
     val success: Boolean,
-    val domain_match: Boolean,
-    val message: String? = null,
-    val documents: List<Document>? = null,
-    val max_sections: Int? = null
+    val concepts: List<Concept>? = null,
+    @SerializedName("native_images") val nativeImages: List<NativeImage>? = null,
+    val error: String? = null,
+    val details: Any? = null
 )
 
-data class Document(
-    val page_content: String,
-    val metadata: Metadata? = null
+data class Concept(
+    val id: String,
+    val title: String,
+    @SerializedName("image_url") val imageUrl: String?,
+    @SerializedName("image_caption") val imageCaption: String?,
+    val score: Float?,
+    val source: String?
 )
 
-data class Metadata(
-    val title: String? = null,
-    val entity: String? = null,
-    val image_url: String? = null
+data class NativeImage(
+    val id: String,
+    val title: String,
+    @SerializedName("image_url") val imageUrl: String,
+    val page: Int,
+    val source: String
 )
 
+// Models for POST /api/rag/concept-details
+data class ConceptDetailsRequest(
+    @SerializedName("concept_id") val conceptId: String
+)
+
+data class ConceptDetailsResponse(
+    val title: String,
+    @SerializedName("image_url") val imageUrl: String?,
+    val script: String?,
+    @SerializedName("model_url") val modelUrl: String?,
+    @SerializedName("model_status") val modelStatus: String
+)
+
+// Legacy endpoints falling back from resolveEntityAndPoll
 data class ResolveEntityRequest(
     val entity: String
 )
 
 data class ResolveEntityResponse(
-    val status: String, // "ready" or "processing"
+    val status: String,
     @SerializedName("model_url") val modelUrl: String? = null,
     @SerializedName("task_id") val taskId: String? = null
 )
 
 data class TaskStatusResponse(
-    val status: String, // "completed" or "processing"
+    val status: String,
     @SerializedName("model_url") val modelUrl: String? = null
 )

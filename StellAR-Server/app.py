@@ -78,6 +78,7 @@ from modules.api.ocr import ocr_bp
 from modules.api.learning_modules import learning_modules_bp
 from modules.api.module_api import module_api_bp
 from modules.api.resolve import resolve_bp
+from modules.api.rag_orchestrator import rag_orchestrator_bp
 
 app.register_blueprint(scan_bp)
 app.register_blueprint(models_bp)
@@ -88,6 +89,7 @@ app.register_blueprint(ocr_bp)
 app.register_blueprint(learning_modules_bp)
 app.register_blueprint(module_api_bp)
 app.register_blueprint(resolve_bp)
+app.register_blueprint(rag_orchestrator_bp)
 
 # Create Tables
 with app.app_context():
@@ -141,6 +143,13 @@ def initialize_modules():
             supabase_service.initialize()
         except Exception as e:
             logger.warning(f"Supabase init failed: {e}")
+
+        # Start RAG 3D worker
+        try:
+            from modules.rag.model_resolver import start_worker
+            start_worker()
+        except Exception as e:
+            logger.warning(f"Failed to start 3D async worker: {e}")
 
             
     except Exception as e:

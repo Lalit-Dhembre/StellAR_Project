@@ -1,6 +1,8 @@
 package com.cosmic_struck.stellar.stellar.pdfar.data.repository
 
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.ProcessPdfResponse
+import com.cosmic_struck.stellar.stellar.pdfar.data.models.ConceptDetailsRequest
+import com.cosmic_struck.stellar.stellar.pdfar.data.models.ConceptDetailsResponse
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.ResolveEntityRequest
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.ResolveEntityResponse
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.TaskStatusResponse
@@ -23,7 +25,7 @@ class PdfArRepositoryImpl @Inject constructor(
     override suspend fun processPdf(pdfFile: File, domain: String): Result<ProcessPdfResponse> {
         return try {
             val requestFile = pdfFile.asRequestBody("application/pdf".toMediaTypeOrNull())
-            val body = MultipartBody.Part.createFormData("files", pdfFile.name, requestFile)
+            val body = MultipartBody.Part.createFormData("file", pdfFile.name, requestFile)
             val domainBody = domain.toRequestBody("text/plain".toMediaTypeOrNull())
             
             val response = api.processPdf(body, domainBody)
@@ -32,10 +34,23 @@ class PdfArRepositoryImpl @Inject constructor(
                 if (data != null && data.success) {
                     Result.success(data)
                 } else {
-                    Result.failure(Exception(data?.message ?: "Invalid PDF"))
+                    Result.failure(Exception(data?.error ?: "Invalid PDF"))
                 }
             } else {
                 Result.failure(Exception("Failed to process PDF: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getConceptDetails(conceptId: String): Result<ConceptDetailsResponse> {
+        return try {
+            val response = api.getConceptDetails(ConceptDetailsRequest(conceptId))
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to get concept details: ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(e)

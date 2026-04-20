@@ -5,38 +5,15 @@ import io
 import time
 from PIL import Image
 from flask import current_app
+from modules.rag.image_retriever import retrieve_images
 
 def fetch_wikipedia_image(entity: str) -> str:
     """
-    Use the Wikipedia API to fetch an image for the entity.
-    Returns the image URL.
+    Legacy wrapper kept for existing callers.
+    Uses the production image retriever and returns only the image URL.
     """
-    url = "https://en.wikipedia.org/w/api.php"
-    params = {
-        "action": "query",
-        "format": "json",
-        "prop": "pageimages",
-        "titles": entity,
-        "pithumbsize": 500
-    }
-    
-    headers = {
-        "User-Agent": "StellAR/1.0 (https://github.com/Lalit-Dhembre/StellAR_Project; contact@stellar.app)"
-    }
-    
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        pages = data.get("query", {}).get("pages", {})
-        
-        for page_id, page_data in pages.items():
-            if "thumbnail" in page_data and "source" in page_data["thumbnail"]:
-                return page_data["thumbnail"]["source"]
-    except Exception as e:
-        print(f"[Wikipedia] Error fetching image for {entity}: {e}")
-        
-    return None
+    result = retrieve_images({"title": entity, "keywords": [entity]})
+    return result.get("image_url")
 
 def validate_image(image_url: str):
     """

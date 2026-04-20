@@ -1,6 +1,8 @@
 package com.cosmic_struck.stellar.stellar.pdfar.data.remote
 
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.ProcessPdfResponse
+import com.cosmic_struck.stellar.stellar.pdfar.data.models.ConceptDetailsRequest
+import com.cosmic_struck.stellar.stellar.pdfar.data.models.ConceptDetailsResponse
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.ResolveEntityRequest
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.ResolveEntityResponse
 import com.cosmic_struck.stellar.stellar.pdfar.data.models.TaskStatusResponse
@@ -19,11 +21,16 @@ import retrofit2.http.Url
 interface PdfArService {
 
     @Multipart
-    @POST("/api/scan")
+    @POST("/api/rag/process-content")
     suspend fun processPdf(
         @Part file: MultipartBody.Part,
-        @Part("domain") domain: okhttp3.RequestBody
+        @Part("expected_domain") expectedDomain: okhttp3.RequestBody
     ): Response<ProcessPdfResponse>
+
+    @POST("/api/rag/concept-details")
+    suspend fun getConceptDetails(
+        @Body request: ConceptDetailsRequest
+    ): Response<ConceptDetailsResponse>
 
     @POST("/resolve-entity")
     suspend fun resolveEntity(

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id 'com.android.library'
 }
@@ -23,6 +25,17 @@ android {
     defaultConfig {
         minSdk 30
         targetSdk 36
+
+        def props = new Properties()
+        def secretsFile = rootProject.file("secrets.properties")
+        if (secretsFile.exists()) {
+            props.load(secretsFile.newDataInputStream())
+        }
+        def localFile = rootProject.file("local.properties")
+        if (localFile.exists()) {
+            props.load(localFile.newDataInputStream())
+        }
+        buildConfigField "String", "GEMINI_API_KEY", "\"${props.getProperty('GEMINI_API_KEY', '')}\""
 
         consumerProguardFiles "proguard-rules.pro"
 

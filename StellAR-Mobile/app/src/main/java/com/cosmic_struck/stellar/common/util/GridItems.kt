@@ -40,11 +40,4 @@ val gridList = listOf<GridItems>(
         navigationRoute = "chemistry_navigation",
         color = Color(0xffFF6D00)
     ),
-
-    GridItems(
-        title = "History",
-        icon = R.drawable.history_icon,
-        navigationRoute = Screens.HistoryHomeScreen.route,
-        color = Color(0xffD50000)
-    )
 )

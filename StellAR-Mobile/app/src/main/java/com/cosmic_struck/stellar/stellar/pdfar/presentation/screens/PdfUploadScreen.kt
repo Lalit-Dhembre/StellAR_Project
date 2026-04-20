@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
 
@@ -28,7 +30,6 @@ fun PdfUploadScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            // Copy the picked URI to a cached File so Retrofit can upload it
             val inputStream = context.contentResolver.openInputStream(it)
             val tempFile = File(context.cacheDir, "upload_pdf_${System.currentTimeMillis()}.pdf")
             val outputStream = FileOutputStream(tempFile)
@@ -40,6 +41,30 @@ fun PdfUploadScreen(
             }
             onPdfSelected(tempFile)
         }
+    }
+
+    // Temporary hook for high-res camera
+    var currentPhotoFile by remember { mutableStateOf<File?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            currentPhotoFile?.let { file ->
+                onPdfSelected(file)
+            }
+        }
+    }
+
+    fun launchCamera() {
+        val photoFile = File(context.cacheDir, "camera_capture_${System.currentTimeMillis()}.jpg")
+        currentPhotoFile = photoFile
+        val photoURI: Uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            photoFile
+        )
+        cameraLauncher.launch(photoURI)
     }
 
     Column(
@@ -69,11 +94,30 @@ fun PdfUploadScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = { pdfPickerLauncher.launch("application/pdf") },
-            modifier = Modifier.fillMaxWidth().height(56.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Select PDF")
+            Button(
+                onClick = { launchCamera() },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp)
+            ) {
+                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Scan Page")
+            }
+            
+            Button(
+                onClick = { pdfPickerLauncher.launch("application/pdf") },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+            ) {
+                Text("Select PDF")
+            }
         }
     }
 }

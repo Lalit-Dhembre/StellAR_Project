@@ -41,7 +41,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import io.github.jan.supabase.SupabaseClient
 import java.io.File
 import javax.inject.Inject
-
+//AIzaSyBRJP1ez6F8-PBvVh6hddM901y35firI2Y
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private var sessionDirectory: File? = null

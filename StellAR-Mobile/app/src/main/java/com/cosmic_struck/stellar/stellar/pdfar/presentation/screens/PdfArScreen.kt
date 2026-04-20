@@ -75,11 +75,15 @@ fun PdfArScreen(
                         CircularProgressIndicator()
                     }
                 }
-                is PdfArUiState.SectionsLoaded -> {
+                is PdfArUiState.ContentLoaded -> {
                     SectionListScreen(
-                        sections = state.sections,
-                        onSectionClick = { entity ->
-                            viewModel.resolveEntityAndPoll(entity, context.cacheDir)
+                        concepts = state.concepts,
+                        nativeImages = state.nativeImages,
+                        onConceptClick = { conceptId, entityName ->
+                            viewModel.fetchConceptDetails(conceptId, entityName)
+                        },
+                        onNativeImageClick = { imageUrl, entityName ->
+                            viewModel.handleNativeImageSelection(imageUrl, entityName)
                         }
                     )
                 }

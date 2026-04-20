@@ -25,14 +25,21 @@
 package com.raylib.raymob;  // Don't change the package name (see gradle.properties)
 
 import android.app.NativeActivity;
-import android.view.KeyEvent;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
+import android.util.Log;
+import android.view.KeyEvent;
 
-public class NativeLoader extends NativeActivity {
+import java.util.Locale;
+
+public class NativeLoader extends NativeActivity implements TextToSpeech.OnInitListener {
 
     public DisplayManager displayManager;
     public SoftKeyboard softKeyboard;
     public boolean initCallback = false;
+    private TextToSpeech tts;
+    private AINarrator aiNarrator;
+    private volatile String pendingAINarration = null;
 
     // Loading method of your native application
     @Override
@@ -40,7 +47,29 @@ public class NativeLoader extends NativeActivity {
         super.onCreate(savedInstanceState);
         displayManager = new DisplayManager(this);
         softKeyboard = new SoftKeyboard(this);
+        tts = new TextToSpeech(this, this);
+        aiNarrator = new AINarrator(this);
         System.loadLibrary("raymob");   // Load your game library (don't change raymob, see gradle.properties)
+    }
+
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            Locale indianEnglish = new Locale("en", "IN");
+            int result = tts.setLanguage(indianEnglish);
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "Language en_IN not supported");
+                tts.setLanguage(Locale.US);
+            }
+        } else {
+            Log.e("TTS", "Initialization failed");
+        }
+    }
+
+    public void speakTTS(String text) {
+        if (tts != null) {
+            tts.speak(text, TextToSpeech.QUEUE_ADD, null, null);
+        }
     }
 
     // Handling loss and regain of application focus
@@ -91,9 +120,37 @@ public class NativeLoader extends NativeActivity {
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+        super.onDestroy();
+    }
+
     private native void onAppStart();
     private native void onAppResume();
     private native void onAppPause();
     private native void onAppStop();
+
+    public void requestAINarration(String context) {
+        if (aiNarrator != null) {
+            aiNarrator.requestNarration(context);
+        }
+    }
+
+    public void onAINarrationReady(String text) {
+        if (tts != null) {
+            tts.speak(text, TextToSpeech.QUEUE_ADD, null, null);
+        }
+        pendingAINarration = text;
+    }
+
+    public String pollAINarration() {
+        String result = pendingAINarration;
+        pendingAINarration = null;
+        return result;
+    }
 
 }

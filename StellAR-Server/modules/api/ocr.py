@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 import pytesseract
 from PIL import Image
-from pdf2image import convert_from_path
+from PIL import Image
 import os
 import uuid
 import re
@@ -86,7 +86,17 @@ def process_ocr(file_path):
     # Handle PDF
     # -------------------------------
     elif ext == '.pdf':
-        images = convert_from_path(file_path, dpi=300)
+        try:
+            import fitz
+            pdf_document = fitz.open(file_path)
+            for page_index in range(len(pdf_document)):
+                page = pdf_document[page_index]
+                pix = page.get_pixmap(dpi=300)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                images.append(img)
+            pdf_document.close()
+        except Exception as e:
+            raise RuntimeError(f"PyMuPDF failed to render PDF: {e}")
 
     # -------------------------------
     # Handle Image
