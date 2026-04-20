@@ -45,3 +45,4 @@ supabase>=2.0.0
 redis
 celery
 sentence-transformers>=2.2.2
+gTTS
