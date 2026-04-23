@@ -193,11 +193,11 @@ def process_content():
                     enriched.setdefault("source", "error")
                 chunk_with_images.append(enriched)
 
-            chunk_text = next(
+            source_chunk_text = next(
                 (concept.get("source_chunk", "") for concept in chunk_with_images if concept.get("source_chunk")),
                 "",
             )
-            script_map = generate_scripts_for_chunk(chunk_with_images, chunk_text=chunk_text)
+            script_map = generate_scripts_for_chunk(chunk_with_images, chunk_text=source_chunk_text)
 
             for concept in chunk_with_images:
                 concept_id = concept.get("id")

@@ -1,7 +1,6 @@
 import os
 import uuid
 import logging
-from io import BytesIO
 from typing import List, Dict, Any
 
 try:
@@ -34,14 +33,12 @@ def _upload_bytes_to_supabase(supabase, bucket_name: str, file_path: str,
                                image_bytes: bytes, content_type: str) -> str:
     """
     Upload image bytes to Supabase Storage and return the public URL.
-    Uses a BytesIO wrapper so the supabase-py SDK receives a file-like object
-    (matching the pattern used in supabase_service.upload_file).
+    The storage3 sync client accepts raw bytes directly. Passing BytesIO can
+    hit the code path that expects a filesystem path and raises a type error.
     """
-    file_obj = BytesIO(image_bytes)
-    
     supabase.storage.from_(bucket_name).upload(
         path=file_path,
-        file=file_obj,
+        file=image_bytes,
         file_options={"content-type": content_type}
     )
     

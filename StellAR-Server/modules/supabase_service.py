@@ -29,7 +29,8 @@ class SupabaseService:
             return
 
         try:
-            self.client: Client = create_client(url, key)
+            normalized_url = url.rstrip("/") + "/"
+            self.client: Client = create_client(normalized_url, key)
             self.initialized = True
             logger.info("✅ Supabase client initialized successfully")
         except Exception as e:
