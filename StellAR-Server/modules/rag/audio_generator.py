@@ -2,7 +2,7 @@
 Audio Generator Module
 ======================
 Generates spoken educational explanations for concepts using:
-    1. Groq LLM -> conversational script generation
+    1. Local Ollama LLM -> conversational script generation
     2. gTTS -> standard free text-to-speech synthesis
     3. Supabase Storage -> persistent audio hosting (with local fallback)
 
@@ -30,7 +30,7 @@ from gtts import gTTS
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
+from modules.local_llm import OLLAMA_MODEL_NAME, generate_with_ollama
 
 # Audio file storage
 AUDIO_DIR = os.path.join(os.getcwd(), "generated_audio")
@@ -112,12 +112,12 @@ def _build_failure_result(script: str, error: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Script generation (Groq LLM)
+# Script generation (local Ollama)
 # ---------------------------------------------------------------------------
 
 def generate_script(concept: Dict[str, Any]) -> str:
     """
-    Generate a natural spoken explanation script for the concept using Groq.
+    Generate a natural spoken explanation script for the concept using Ollama.
 
     Falls back to a simple template if the LLM call fails.
     """
@@ -130,32 +130,21 @@ def generate_script(concept: Dict[str, Any]) -> str:
         f"This is an important concept worth exploring further."
     )
 
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        logger.warning("GROQ_API_KEY not set - using fallback script")
-        return fallback
-
     try:
-        from groq import Groq
-
-        client = Groq(api_key=api_key)
-        response = client.chat.completions.create(
-            model=GROQ_MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SCRIPT_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": SCRIPT_USER_TEMPLATE.format(
-                        title=title,
-                        short_explanation=explanation,
-                    ),
-                },
-            ],
-            temperature=0.6,
-            max_completion_tokens=200,
+        script = generate_with_ollama(
+            prompt=SCRIPT_USER_TEMPLATE.format(
+                title=title,
+                short_explanation=explanation,
+            ),
+            system=SCRIPT_SYSTEM_PROMPT,
+            model=OLLAMA_MODEL_NAME,
+            options={
+                "temperature": 0.4,
+                "num_predict": 220,
+            },
+            timeout=30,
         )
-
-        script = (response.choices[0].message.content or "").strip()
+        script = (script or "").strip()
 
         if not script or len(script.split()) < 10:
             logger.warning("LLM returned too-short script, using fallback")

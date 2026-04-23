@@ -3,8 +3,9 @@ Production-grade educational image retriever for the StellAR backend.
 
 Priority:
     1. Cache
-    2. Wikipedia (Fast, Cheap)
+    2. Wikipedia (Fast, Free)
     3. Google Custom Search (High Quality Fallback)
+    4. Best-effort fallback (first available image if ranking fails)
 """
 
 import json
@@ -23,10 +24,11 @@ logger = logging.getLogger(__name__)
 
 # System Constants
 REQUEST_TIMEOUT = 10
-WIKIPEDIA_THRESHOLD = 0.45
-GOOGLE_THRESHOLD = 0.35
+WIKIPEDIA_THRESHOLD = 0.30       # Lowered: short educational captions score lower
+GOOGLE_THRESHOLD = 0.25          # Lowered: Google titles are often generic
+MIN_CAPTION_LENGTH = 5           # Lowered from 20: Wikipedia descriptions are often short
 MAX_IMAGES = 5
-REJECT_TERMS = {"logo", "icon", "symbol"}
+REJECT_TERMS = {"logo", "icon", "symbol", "favicon"}
 
 # Global Models & Redis Config
 _embedding_model: Optional[SentenceTransformer] = None
@@ -101,35 +103,54 @@ def get_embedding(text: str) -> Any:
     return emb
 
 def rank_images(concept_text: str, candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Rank candidate images by semantic similarity to the concept text.
+    Returns the best candidate, or the first valid candidate as fallback.
+    """
     if not candidates:
         return {}
 
     concept_emb = get_embedding(concept_text)
     ranked = []
+    first_valid = None  # Track first candidate with a valid URL for fallback
 
     for img in candidates:
+        image_url = img.get("image_url", "")
         caption = img.get("image_caption", "")
-        # Filter 1: missing caption
-        if not caption:
-            continue
-        
-        # Filter 2: short caption
-        if len(caption.strip()) < 20:
+
+        # Track first candidate with a valid URL (for fallback)
+        if image_url and first_valid is None:
+            first_valid = img
+
+        # Filter 1: missing or very short caption
+        if not caption or len(caption.strip()) < MIN_CAPTION_LENGTH:
+            # If the caption is too short but we have a URL, use the URL as-is
+            # with a low score so it can serve as fallback
+            if image_url:
+                enriched = dict(img)
+                enriched["score"] = 0.1
+                ranked.append(enriched)
             continue
             
-        # Filter 3: reject terms
+        # Filter 2: reject terms
         if any(term in caption.lower() for term in REJECT_TERMS):
             continue
 
         caption_emb = get_embedding(caption)
         sim = cosine_similarity([concept_emb], [caption_emb])[0][0]
-        logger.info(f"[Semantic Rank] Score: {sim:.3f} | Caption: '{caption[:100]}...'")
+        logger.info(f"[Semantic Rank] Score: {sim:.3f} | Caption: '{caption[:100]}'")
         
         enriched = dict(img)
         enriched["score"] = float(sim)
         ranked.append(enriched)
 
     if not ranked:
+        # Absolute fallback: return first valid candidate without ranking
+        if first_valid:
+            logger.info("[Fallback] No rankable candidates, using first valid image")
+            result = dict(first_valid)
+            result["score"] = 0.0
+            return result
         return {}
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
@@ -140,6 +161,11 @@ def rank_images(concept_text: str, candidates: List[Dict[str, Any]]) -> Dict[str
 # ---------------------------------------------------------
 
 def fetch_wikipedia_images(title: str) -> List[Dict[str, Any]]:
+    """
+    Fetch images from Wikipedia for a given concept title.
+    Uses generator-based search with thumbnails and page descriptions.
+    Includes retry logic for transient failures.
+    """
     logger.info(f"Fetching Wikipedia images for: {title}")
     url = "https://en.wikipedia.org/w/api.php"
     params = {
@@ -147,24 +173,31 @@ def fetch_wikipedia_images(title: str) -> List[Dict[str, Any]]:
         "format": "json",
         "generator": "search",
         "gsrsearch": title,
-        "gsrlimit": 3,
+        "gsrlimit": 5,          # Search more pages for better coverage
         "prop": "pageimages|pageterms",
         "pithumbsize": 1000,
-        "pilimit": 3,
+        "pilimit": 5,
     }
     
-    try:
-        response = requests.get(
-            url, 
-            params=params, 
-            headers={"User-Agent": "Mozilla/5.0"}, 
-            timeout=REQUEST_TIMEOUT
-        )
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        logger.warning(f"Wikipedia request failed: {e}")
-        return []
+    # Retry logic: try up to 2 times
+    for attempt in range(2):
+        try:
+            response = requests.get(
+                url, 
+                params=params, 
+                headers={"User-Agent": "StellAR/1.0 (educational-AR-pipeline)"}, 
+                timeout=REQUEST_TIMEOUT
+            )
+            response.raise_for_status()
+            data = response.json()
+            break
+        except Exception as e:
+            if attempt == 0:
+                logger.debug(f"Wikipedia request attempt 1 failed: {e}, retrying...")
+                time.sleep(0.5)
+                continue
+            logger.warning(f"Wikipedia request failed after retries: {e}")
+            return []
 
     results = []
     pages = data.get("query", {}).get("pages", {})
@@ -174,28 +207,41 @@ def fetch_wikipedia_images(title: str) -> List[Dict[str, Any]]:
         if not img_url:
             continue
 
-        terms = page.get("terms", {}).get("description") or [""]
-        caption = terms[0] or page.get("title", "")
+        # Build caption: prefer description, fallback to page title
+        terms = page.get("terms", {}).get("description") or []
+        if terms and terms[0]:
+            caption = terms[0]
+        else:
+            caption = page.get("title", "")
         
+        # Enrich caption with page title if description is very short
+        page_title = page.get("title", "")
+        if len(caption) < 15 and page_title and caption.lower() != page_title.lower():
+            caption = f"{page_title}: {caption}"
+
         results.append({
             "image_url": img_url,
             "image_caption": caption,
             "source": "wikipedia"
         })
         
-    return results[:3]
+    logger.info(f"Wikipedia returned {len(results)} candidate(s) for '{title}'")
+    return results[:5]
 
 def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
-    # Requires GOOGLE_CUSTOM_SEARCH and GOOGLE_CX
+    """
+    Fetch images from Google Custom Search API.
+    Requires GOOGLE_CUSTOM_SEARCH (API key) and GOOGLE_CX (search engine ID).
+    """
     api_key = os.environ.get("GOOGLE_CUSTOM_SEARCH")
     cx = os.environ.get("GOOGLE_CX")
     if not api_key or not cx:
-        logger.warning("Google API keys not found. Skipping Google fallback.")
+        logger.warning("Google API keys not found (need GOOGLE_CUSTOM_SEARCH and GOOGLE_CX). Skipping Google fallback.")
         return []
 
     title = concept.get("title", "")
-    keywords = " ".join(concept.get("keywords", []))
-    query = f"{title} {keywords} labeled diagram".strip()
+    keywords = " ".join(concept.get("keywords", [])[:3])  # Limit keywords to avoid overly long queries
+    query = f"{title} {keywords} educational diagram".strip()
     
     logger.info(f"Fetching Google images for query: {query}")
     url = "https://www.googleapis.com/customsearch/v1"
@@ -204,13 +250,19 @@ def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
         "cx": cx,
         "key": api_key,
         "searchType": "image",
-        "num": MAX_IMAGES
+        "num": MAX_IMAGES,
+        "imgSize": "large",
+        "safe": "active",
     }
     
     try:
         response = requests.get(url=url, params=params, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         data = response.json()
+    except requests.exceptions.HTTPError as e:
+        # Log specific HTTP errors (quota, auth issues)
+        logger.warning(f"Google Search HTTP error: {e.response.status_code} - {e.response.text[:200]}")
+        return []
     except Exception as e:
         logger.warning(f"Google Search request failed: {e}")
         return []
@@ -218,12 +270,20 @@ def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
     results = []
     items = data.get("items", [])
     for img in items:
+        link = img.get("link", "")
+        caption = img.get("title", "")
+        
+        # Skip if no URL
+        if not link:
+            continue
+            
         results.append({
-            "image_url": img.get("link"),
-            "image_caption": img.get("title", ""),
+            "image_url": link,
+            "image_caption": caption,
             "source": "google"
         })
         
+    logger.info(f"Google returned {len(results)} candidate(s) for '{title}'")
     return results
 
 # ---------------------------------------------------------
@@ -231,8 +291,16 @@ def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------
 
 def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Retrieve the best image for a concept using the priority chain:
+    Cache → Wikipedia → Google → Fallback.
+    """
     title = concept.get("title", "").strip()
     
+    if not title:
+        logger.warning("retrieve_best_image called with empty title")
+        return {"image_url": None, "image_caption": None, "source": "none"}
+
     # 1. CACHE LAYER (FIRST PRIORITY)
     cached = _get_cached_image(title)
     if cached:
@@ -245,12 +313,12 @@ def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
     explanation = concept.get("short_explanation", "")
     concept_text = f"{title}. Keywords: {', '.join(keywords)}. {explanation}"
 
-    # 2. WIKIPEDIA LAYER (CHEAP ATTEMPT)
+    # 2. WIKIPEDIA LAYER (FREE, FAST)
     wiki_candidates = fetch_wikipedia_images(title)
     best_wiki = rank_images(concept_text, wiki_candidates)
 
     if best_wiki and best_wiki.get("score", 0.0) >= WIKIPEDIA_THRESHOLD:
-        logger.info(f"Wikipedia triggered successfully for '{title}' (score >= {WIKIPEDIA_THRESHOLD})")
+        logger.info(f"Wikipedia image accepted for '{title}' (score={best_wiki['score']:.3f} >= {WIKIPEDIA_THRESHOLD})")
         final_result = {
             "image_url": best_wiki["image_url"],
             "image_caption": best_wiki["image_caption"],
@@ -259,13 +327,13 @@ def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
         _set_cached_image(title, final_result)
         return final_result
 
-    # 5. GOOGLE API LAYER (FALLBACK)
-    logger.info(f"Wikipedia fallback triggered for '{title}'. Falling back to Google API.")
+    # 3. GOOGLE API LAYER (PAID FALLBACK)
+    logger.info(f"Wikipedia insufficient for '{title}' (best score={best_wiki.get('score', 0):.3f}). Trying Google API.")
     google_candidates = fetch_google_images(concept)
     best_google = rank_images(concept_text, google_candidates)
 
     if best_google and best_google.get("score", 0.0) >= GOOGLE_THRESHOLD:
-        logger.info(f"Google triggered successfully for '{title}' (score >= {GOOGLE_THRESHOLD})")
+        logger.info(f"Google image accepted for '{title}' (score={best_google['score']:.3f} >= {GOOGLE_THRESHOLD})")
         final_result = {
             "image_url": best_google["image_url"],
             "image_caption": best_google["image_caption"],
@@ -274,19 +342,33 @@ def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
         _set_cached_image(title, final_result)
         return final_result
 
-    # 7. FINAL SELECTION FAILED
-    logger.warning(f"No suitable images found for '{title}' across all sources.")
-    failed_result = {
+    # 4. BEST-EFFORT FALLBACK
+    # If semantic ranking was too strict, pick the best available image anyway.
+    # An image (even imperfect) is better than no image for the AR pipeline.
+    fallback_candidate = best_wiki or best_google
+    if fallback_candidate and fallback_candidate.get("image_url"):
+        logger.info(f"Using best-effort fallback image for '{title}' (score={fallback_candidate.get('score', 0):.3f})")
+        final_result = {
+            "image_url": fallback_candidate["image_url"],
+            "image_caption": fallback_candidate.get("image_caption", title),
+            "source": f"{fallback_candidate.get('source', 'unknown')}_fallback"
+        }
+        _set_cached_image(title, final_result)
+        return final_result
+
+    # 5. FINAL FAILURE
+    logger.warning(f"No images found for '{title}' across all sources.")
+    return {
         "image_url": None,
         "image_caption": None,
         "source": "none"
     }
-    return failed_result
 
 
 def retrieve_images(concepts: Any) -> Any:
     """
-    Adapter loop to securely serve pipeline lists.
+    Adapter loop to process a single concept or list of concepts.
+    Returns concept dicts enriched with image_url, image_caption, and source.
     """
     if isinstance(concepts, dict):
         base = dict(concepts)
@@ -302,8 +384,15 @@ def retrieve_images(concepts: Any) -> Any:
         if not isinstance(concept, dict):
             continue
         c_copy = dict(concept)
-        img_data = retrieve_best_image(concept)
-        c_copy.update(img_data)
+        try:
+            img_data = retrieve_best_image(concept)
+            c_copy.update(img_data)
+        except Exception as exc:
+            # Never let a single image failure crash the whole batch
+            logger.error(f"Image retrieval failed for '{concept.get('title', '?')}': {exc}")
+            c_copy["image_url"] = None
+            c_copy["image_caption"] = None
+            c_copy["source"] = "error"
         results.append(c_copy)
         
     return results

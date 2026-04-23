@@ -1,6 +1,11 @@
 import os
 import time
 import glob
+
+# Load .env before anything else reads os.environ
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
 import uuid

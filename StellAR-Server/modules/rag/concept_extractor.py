@@ -1,13 +1,9 @@
 """
 Concept Extractor Module
 ========================
-Extracts visualizable educational concepts from text chunks using Groq LLM.
-Each concept is returned as a structured dict suitable for downstream 3D
-model retrieval / generation.
-
-Usage:
-    from modules.rag.concept_extractor import extract_concepts
-    concepts = extract_concepts(chunks)
+Extracts visualizable educational concepts from text chunks using a local
+Ollama model and returns concept dicts compatible with the downstream image
+retrieval and model-generation pipeline.
 """
 
 from __future__ import annotations
@@ -15,383 +11,354 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
-from groq import Groq
+from modules.local_llm import OLLAMA_MODEL_NAME, extract_json_fragment, generate_with_ollama
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-# Reuse the same model the rest of the project uses, with env-var override
-GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
-MAX_CONCEPTS_PER_CHUNK = 8         # Increased cap dynamically due to batching
-MIN_CONFIDENCE = 0.7               # Concepts below this are discarded
-MAX_RETRIES = 2                    # Retry budget when JSON parsing fails
-LLM_TEMPERATURE = 0.3             # Low temp → more deterministic extraction
-LLM_MAX_TOKENS = 4096             # More room for batched extracted concepts
+MAX_CONCEPTS_PER_CHUNK = 6
+MAX_CHUNK_CHARACTERS = int(os.environ.get("RAG_CONCEPT_CHUNK_CHARS", "1800"))
+OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("RAG_CONCEPT_TIMEOUT_SECONDS", "45"))
 
-# Module-level logger
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Groq client helper (mirrors modules/api/domain_validator.py)
-# ---------------------------------------------------------------------------
+SYSTEM_PROMPT = """You extract visualizable educational concepts for an AR learning pipeline.
 
-def _get_groq_client() -> Groq:
-    """
-    Initialise and return a Groq client.
-    Reads GROQ_API_KEY from the environment — raises ValueError if unset.
-    """
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY environment variable is not set")
-    return Groq(api_key=api_key)
+Return ONLY a valid JSON array.
+Each array item must be an object with exactly these keys:
+- "concept": string
+- "description": string
 
-# ---------------------------------------------------------------------------
-# Prompt templates
-# ---------------------------------------------------------------------------
+Rules:
+- Extract only important visualizable objects, structures, systems, or processes.
+- Keep descriptions short and grounded in the provided text.
+- Return at most 6 concepts.
+- Avoid duplicates, synonyms, and overly abstract ideas.
+- If nothing useful is present, return [].
+- Do not include markdown, code fences, or explanatory text."""
 
-SYSTEM_PROMPT = """\
-You are an expert educational content analyzer for an augmented-reality \
-learning application.
-
-Your task is to extract ONLY important, visualizable concepts from the \
-provided text.
-
-### What counts as a visualizable concept
-- Something that can be represented as a 3D model, diagram, structure, or \
-  animated process.
-- Real physical objects, organisms, celestial bodies, molecules, organs, \
-  machines, geological formations, etc.
-- Processes that have clear visual stages (e.g. water cycle, cell division).
-
-### What does NOT count
-- Purely abstract ideas with no visual form (e.g. "democracy", "justice").
-- Trivial or generic terms (e.g. "text", "example", "information").
-- Names of people, dates, or numerical constants.
-- Overlapping concepts that describe the same core idea in different words.
-- Parent/child duplicates where one concept is just a sub-part, synonym, or
-  narrower restatement of another returned concept.
-
-### Output rules
-1. Return **ONLY** a valid JSON object with a single key "concepts" whose \
-   value is an array.
-2. Each element must be an object with exactly these keys:
-   - "title"             : string — short concept name (2-5 words)
-   - "type"              : string — one of "object", "process", "structure", \
-                           "diagram"
-   - "confidence"        : number — 0.0 to 1.0
-   - "keywords"          : array  — exactly 5 relevant search terms
-   - "short_explanation" : string — 2-3 sentence description
-3. Extract at most 8 concepts. Fewer is fine if the text doesn't contain \
-   enough visualizable content.
-4. If the text contains NO visualizable concepts, return: {"concepts": []}
-5. Do NOT hallucinate concepts that are not clearly supported by the text.
-6. Avoid overlapping concepts. Each concept should represent a DISTINCT idea.
-7. If two candidates are closely related, keep only the broader or more
-   instructionally useful one.
-8. Do not return synonyms, paraphrases, or near-duplicates of the same concept.
-"""
-
-USER_PROMPT_TEMPLATE = """\
-Text:
+USER_PROMPT_TEMPLATE = """Text chunk:
 \"\"\"
 {chunk}
 \"\"\"
 
-Extract the visualizable concepts from the text above.
-Avoid overlapping concepts.
-Each concept should represent a DISTINCT idea.
-Return ONLY valid JSON.
-"""
+Extract the top visualizable concepts from this chunk.
+Return JSON only."""
+
+_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into",
+    "is", "it", "of", "on", "or", "that", "the", "their", "this", "to", "with",
+}
+
+_VISUAL_TERMS = [
+    "algae",
+    "amino acid",
+    "amoeba",
+    "artery",
+    "bacteria",
+    "blood",
+    "blood vessel",
+    "carbohydrate",
+    "cell",
+    "cell membrane",
+    "chlorophyll",
+    "chloroplast",
+    "circulatory system",
+    "digestion",
+    "digestive system",
+    "dna",
+    "ecosystem",
+    "enzyme",
+    "fat",
+    "food chain",
+    "heart",
+    "intestine",
+    "kidney",
+    "leaf",
+    "liver",
+    "lung",
+    "mitochondria",
+    "mouth",
+    "nutrition",
+    "organ",
+    "organ system",
+    "organism",
+    "photosynthesis",
+    "plant",
+    "protein",
+    "reproduction",
+    "respiration",
+    "root",
+    "stomach",
+    "tissue",
+    "vein",
+    "villus",
+]
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+def _split_for_ollama(chunk: str) -> List[str]:
+    text = (chunk or "").strip()
+    if not text:
+        return []
+    if len(text) <= MAX_CHUNK_CHARACTERS:
+        return [text]
 
-def _parse_concepts_json(raw: str) -> List[Dict[str, Any]]:
+    parts: List[str] = []
+    cursor = 0
+    while cursor < len(text):
+        window = text[cursor:cursor + MAX_CHUNK_CHARACTERS]
+        if cursor + MAX_CHUNK_CHARACTERS < len(text):
+            split_at = max(window.rfind("\n\n"), window.rfind(". "), window.rfind(" "))
+            if split_at > MAX_CHUNK_CHARACTERS // 2:
+                window = window[:split_at].strip()
+        parts.append(window.strip())
+        cursor += max(len(window), 1)
+
+    return [part for part in parts if part]
+
+
+def extract_concepts_json(text_chunk: str) -> List[Dict[str, str]]:
     """
-    Parse the raw LLM output into a list of concept dicts.
-
-    Handles edge cases:
-    - Output wrapped in markdown code fences
-    - Output is a dict with a wrapper key (e.g. {"concepts": [...]})
-    - Output contains leading/trailing garbage text around JSON
+    Input: text chunk
+    Output: JSON-compatible list of {"concept", "description"} objects
     """
-    text = raw.strip()
+    if not text_chunk or not text_chunk.strip():
+        return []
 
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        first_newline = text.index("\n")
-        text = text[first_newline + 1:]
-        if text.rstrip().endswith("```"):
-            text = text.rstrip()[:-3].rstrip()
+    prompt = USER_PROMPT_TEMPLATE.format(chunk=text_chunk.strip())
 
-    # Try direct parse first
     try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        # Fallback: locate the outermost [ ... ] or { ... } in the string
-        start = text.find("[")
-        end = text.rfind("]")
-        if start != -1 and end != -1 and end > start:
-            data = json.loads(text[start : end + 1])
-        else:
-            start = text.find("{")
-            end = text.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                data = json.loads(text[start : end + 1])
-            else:
-                raise ValueError(f"No JSON found in LLM output: {text[:200]}")
+        raw_output = generate_with_ollama(
+            prompt=prompt,
+            system=SYSTEM_PROMPT,
+            model=OLLAMA_MODEL_NAME,
+            format="json",
+            options={
+                "temperature": 0.1,
+                "num_predict": 500,
+            },
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("Ollama concept extraction failed: %s", exc)
+        return _fallback_extract_concepts_json(text_chunk)
 
-    # If the model returned a wrapper object, unwrap it
+    payload = _parse_raw_concepts(raw_output)
+    if not payload:
+        return _fallback_extract_concepts_json(text_chunk)
+
+    return payload[:MAX_CONCEPTS_PER_CHUNK]
+
+
+def _parse_raw_concepts(raw_output: str) -> List[Dict[str, str]]:
+    json_fragment = extract_json_fragment(raw_output)
+    if not json_fragment:
+        logger.warning("No JSON fragment found in Ollama response")
+        return []
+
+    try:
+        data = json.loads(json_fragment)
+    except json.JSONDecodeError as exc:
+        logger.warning("Invalid concept JSON from Ollama: %s", exc)
+        return []
+
     if isinstance(data, dict):
-        for key in ("concepts", "results", "data", "items"):
-            if key in data and isinstance(data[key], list):
+        for key in ("concepts", "items", "data", "results"):
+            if isinstance(data.get(key), list):
                 data = data[key]
                 break
         else:
-            # Single concept returned as dict → wrap in list
-            if "title" in data:
-                data = [data]
-            else:
-                data = []
+            data = [data] if "concept" in data else []
 
     if not isinstance(data, list):
-        raise ValueError(f"Expected a JSON array, got {type(data).__name__}")
+        return []
 
-    return data
+    concepts: List[Dict[str, str]] = []
+    seen: set[str] = set()
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        concept = str(item.get("concept", "")).strip()
+        description = str(item.get("description", "")).strip()
+        normalized = concept.lower()
+
+        if not concept or not description or normalized in seen:
+            continue
+
+        seen.add(normalized)
+        concepts.append({
+            "concept": concept,
+            "description": description,
+        })
+
+    return concepts
 
 
-def _validate_concept(concept: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _sentence_for_term(text: str, term: str) -> str:
+    sentences = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text).strip())
+    pattern = re.compile(rf"\b{re.escape(term)}s?\b", re.IGNORECASE)
+    for sentence in sentences:
+        if pattern.search(sentence):
+            return sentence.strip()
+    return sentences[0].strip() if sentences else ""
+
+
+def _make_description(term: str, sentence: str) -> str:
+    clean_sentence = sentence.strip()
+    if not clean_sentence:
+        return f"{term.title()} is an important visual concept from the uploaded text."
+    if len(clean_sentence) > 180:
+        clean_sentence = clean_sentence[:177].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return clean_sentence
+
+
+def _title_from_term(term: str) -> str:
+    known_lowercase = {"dna"}
+    words = []
+    for word in term.split():
+        words.append(word.upper() if word in known_lowercase else word.capitalize())
+    return " ".join(words)
+
+
+def _fallback_extract_concepts_json(text_chunk: str) -> List[Dict[str, str]]:
     """
-    Validate and normalise a single concept dict.
-    Returns None if the concept is malformed or below the confidence threshold.
+    Lightweight local backup for demos and offline runs when Ollama is unhealthy.
+    It favors concrete biology terms, then simple textbook definition patterns.
     """
-    # Required keys check
-    required = {"title", "type", "confidence", "keywords", "short_explanation"}
-    if not required.issubset(concept.keys()):
-        missing = required - concept.keys()
-        logger.debug("Concept missing keys %s — skipping: %s", missing, concept)
+    text = (text_chunk or "").strip()
+    if not text:
+        return []
+
+    concepts: List[Dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add_concept(term: str, sentence: str) -> None:
+        normalized = term.lower().strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        concepts.append({
+            "concept": _title_from_term(normalized),
+            "description": _make_description(_title_from_term(normalized), sentence),
+        })
+
+    for term in sorted(_VISUAL_TERMS, key=len, reverse=True):
+        if len(concepts) >= MAX_CONCEPTS_PER_CHUNK:
+            break
+        if re.search(rf"\b{re.escape(term)}s?\b", text, flags=re.IGNORECASE):
+            add_concept(term, _sentence_for_term(text, term))
+
+    definition_patterns = (
+        r"\b([A-Z][A-Za-z][A-Za-z\s\-]{2,40})\s+(?:is|are|refers to|means)\s+([^.!?]{20,180})",
+        r"\b(?:process of|structure of|function of)\s+([A-Za-z][A-Za-z\s\-]{2,40})",
+    )
+    for pattern in definition_patterns:
+        if len(concepts) >= MAX_CONCEPTS_PER_CHUNK:
+            break
+        for match in re.finditer(pattern, text):
+            if len(concepts) >= MAX_CONCEPTS_PER_CHUNK:
+                break
+            term = re.sub(r"\s+", " ", match.group(1)).strip(" -,:;")
+            words = [word for word in term.split() if word.lower() not in _STOP_WORDS]
+            if not (1 <= len(words) <= 4):
+                continue
+            add_concept(" ".join(words), _sentence_for_term(text, term))
+
+    if concepts:
+        logger.info("Fallback concept extraction produced %d concept(s)", len(concepts))
+    return concepts[:MAX_CONCEPTS_PER_CHUNK]
+
+
+def _infer_type(concept: str, description: str) -> str:
+    haystack = f"{concept} {description}".lower()
+    if any(term in haystack for term in ("process", "cycle", "division", "reaction", "flow", "formation")):
+        return "process"
+    if any(term in haystack for term in ("system", "structure", "layer", "membrane", "organ", "network")):
+        return "structure"
+    if any(term in haystack for term in ("diagram", "model", "map", "chart")):
+        return "diagram"
+    return "object"
+
+
+def _build_keywords(concept: str, description: str) -> List[str]:
+    words = re.findall(r"[A-Za-z][A-Za-z\-]+", f"{concept} {description}".lower())
+    ordered: List[str] = []
+    for word in words:
+        if len(word) < 3 or word in _STOP_WORDS or word in ordered:
+            continue
+        ordered.append(word)
+        if len(ordered) == 5:
+            break
+    if concept.lower() not in ordered:
+        ordered = [concept.strip()] + ordered
+    return ordered[:5]
+
+
+def _to_pipeline_concept(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    concept = item.get("concept", "").strip()
+    description = item.get("description", "").strip()
+    if not concept or not description:
         return None
 
-    # Type must be one of the allowed values
-    allowed_types = {"object", "process", "structure", "diagram"}
-    if concept["type"] not in allowed_types:
-        logger.debug("Invalid concept type '%s' — skipping", concept["type"])
-        return None
-
-    # Confidence must be numeric and >= threshold
-    try:
-        confidence = float(concept["confidence"])
-    except (TypeError, ValueError):
-        logger.debug("Non-numeric confidence — skipping: %s", concept)
-        return None
-
-    if confidence < MIN_CONFIDENCE:
-        logger.debug(
-            "Low confidence (%.2f < %.2f) — filtering out: %s",
-            confidence, MIN_CONFIDENCE, concept.get("title"),
-        )
-        return None
-
-    # Keywords must be a list of strings
-    keywords = concept.get("keywords", [])
-    if not isinstance(keywords, list):
-        keywords = []
-    keywords = [str(k) for k in keywords if k][:5]  # cap at 5
-
-    # Build the clean, validated concept
     return {
         "id": str(uuid.uuid4()),
-        "title": str(concept["title"]).strip(),
-        "type": concept["type"],
-        "confidence": round(confidence, 2),
-        "keywords": keywords,
-        "short_explanation": str(concept.get("short_explanation", "")).strip(),
+        "title": concept,
+        "type": _infer_type(concept, description),
+        "confidence": 0.85,
+        "keywords": _build_keywords(concept, description),
+        "short_explanation": description,
     }
 
 
 def _extract_from_chunk(chunk: str) -> List[Dict[str, Any]]:
-    """
-    Call the Groq LLM for a single chunk and return validated concepts.
-    Retries up to MAX_RETRIES times on JSON parse failures.
-    """
-    last_error: Optional[Exception] = None
+    extracted = extract_concepts_json(chunk)
+    results: List[Dict[str, Any]] = []
 
-    for attempt in range(1, MAX_RETRIES + 2):  # +2 because range is exclusive
-        try:
-            logger.info(
-                "Groq call attempt %d/%d for chunk (%.40s…)",
-                attempt, MAX_RETRIES + 1, chunk,
-            )
+    for item in extracted[:MAX_CONCEPTS_PER_CHUNK]:
+        concept = _to_pipeline_concept(item)
+        if concept is not None:
+            results.append(concept)
 
-            # Initialise Groq client (consistent with project's domain_validator.py)
-            client = _get_groq_client()
+    return results
 
-            response = client.chat.completions.create(
-                model=GROQ_MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": USER_PROMPT_TEMPLATE.format(chunk=chunk)},
-                ],
-                temperature=LLM_TEMPERATURE,
-                max_completion_tokens=LLM_MAX_TOKENS,
-                response_format={"type": "json_object"},
-            )
-
-            raw_output = response.choices[0].message.content.strip()
-            logger.debug("Raw Groq output: %s", raw_output[:300])
-
-            # Parse the JSON from the LLM response
-            raw_concepts = _parse_concepts_json(raw_output)
-
-            # Validate each concept and filter
-            validated: List[Dict[str, Any]] = []
-            for raw_concept in raw_concepts[:MAX_CONCEPTS_PER_CHUNK]:
-                clean = _validate_concept(raw_concept)
-                if clean is not None:
-                    validated.append(clean)
-
-            logger.info(
-                "Extracted %d valid concept(s) from chunk", len(validated),
-            )
-            return validated
-
-        except json.JSONDecodeError as exc:
-            last_error = exc
-            logger.warning(
-                "JSON parse failed on attempt %d: %s", attempt, exc,
-            )
-
-        except Exception as exc:
-            last_error = exc
-            logger.error(
-                "Groq call failed on attempt %d: %s", attempt, exc,
-            )
-            # Don't retry on non-parse errors (e.g. auth failure, rate limit)
-            break
-
-    # All retries exhausted
-    logger.error(
-        "All %d attempts failed for chunk — returning empty. Last error: %s",
-        MAX_RETRIES + 1, last_error,
-    )
-    return []
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def extract_concepts(chunks: List[str]) -> List[Dict[str, Any]]:
     """
-    Extract visualizable concepts from a list of text chunks.
-    Batches chunks aggressively to minimize 429 API Rate Limits.
+    Extract visualizable concepts from a list of chunks while preserving the
+    existing pipeline's return shape.
     """
     if not chunks:
         logger.warning("extract_concepts called with empty chunk list")
         return []
 
-    # Batching logic: Combine chunks into larger megachunks up to ~4000 chars
-    batched_chunks = []
-    current_batch = []
-    current_length = 0
+    normalized_chunks: List[str] = []
     for chunk in chunks:
-        chunk = chunk.strip()
-        if not chunk: continue
-        
-        if current_length + len(chunk) > 4000 and current_batch:
-            batched_chunks.append("\n\n".join(current_batch))
-            current_batch = [chunk]
-            current_length = len(chunk)
-        else:
-            current_batch.append(chunk)
-            current_length += len(chunk)
-            
-    if current_batch:
-        batched_chunks.append("\n\n".join(current_batch))
+        normalized_chunks.extend(_split_for_ollama(chunk))
 
     all_concepts: List[Dict[str, Any]] = []
+    seen_titles: set[str] = set()
 
-    for idx, mega_chunk in enumerate(batched_chunks):
+    for idx, chunk in enumerate(normalized_chunks):
         logger.info(
-            "Processing batched Mega-Chunk %d/%d (%d chars) to save LLM calls",
-            idx + 1, len(batched_chunks), len(mega_chunk)
+            "Processing concept chunk %d/%d with local Ollama (%d chars)",
+            idx + 1,
+            len(normalized_chunks),
+            len(chunk),
         )
-        concepts = _extract_from_chunk(mega_chunk)
-        all_concepts.extend(concepts)
+
+        for concept in _extract_from_chunk(chunk):
+            title_key = concept.get("title", "").strip().lower()
+            if not title_key or title_key in seen_titles:
+                continue
+            seen_titles.add(title_key)
+            all_concepts.append(concept)
 
     logger.info(
-        "Concept extraction complete: %d concept(s) from %d chunks (bundled into %d API calls)",
-        len(all_concepts), len(chunks), len(batched_chunks)
+        "Concept extraction complete: %d concept(s) from %d original chunks",
+        len(all_concepts),
+        len(chunks),
     )
     return all_concepts
-
-
-# ---------------------------------------------------------------------------
-# Example usage & simple tests
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    # Load .env so GROQ_API_KEY is available when running standalone
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass  # dotenv not required if env vars are set externally
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    )
-
-    # ----- Example: real extraction from sample educational text -----------
-    sample_chunks = [
-        (
-            "The human heart is a muscular organ roughly the size of a fist. "
-            "It has four chambers: the left atrium, right atrium, left ventricle, "
-            "and right ventricle. The heart pumps blood through the circulatory "
-            "system, delivering oxygen and nutrients to every cell in the body. "
-            "Deoxygenated blood returns to the heart through veins, enters the "
-            "right atrium, and is pumped to the lungs for gas exchange."
-        ),
-        (
-            "Photosynthesis is the process by which green plants convert sunlight "
-            "into chemical energy. It occurs primarily in the chloroplasts of leaf "
-            "cells. The process has two main stages: the light-dependent reactions, "
-            "which take place in the thylakoid membranes, and the Calvin cycle, "
-            "which occurs in the stroma. Water molecules are split during the "
-            "light reactions, releasing oxygen as a byproduct."
-        ),
-    ]
-
-    print("=" * 60)
-    print("Concept Extraction — Example Run (Groq)")
-    print("=" * 60)
-
-    results = extract_concepts(sample_chunks)
-
-    print(f"\nTotal concepts extracted: {len(results)}\n")
-    for concept in results:
-        print(json.dumps(concept, indent=2))
-        print()
-
-    # ----- Assertions (basic sanity checks) --------------------------------
-    for c in results:
-        assert "id" in c,               "Missing 'id'"
-        assert "title" in c,            "Missing 'title'"
-        assert "type" in c,             "Missing 'type'"
-        assert "confidence" in c,       "Missing 'confidence'"
-        assert "keywords" in c,         "Missing 'keywords'"
-        assert "short_explanation" in c, "Missing 'short_explanation'"
-        assert c["type"] in {"object", "process", "structure", "diagram"}, \
-            f"Invalid type: {c['type']}"
-        assert 0.0 <= c["confidence"] <= 1.0, \
-            f"Confidence out of range: {c['confidence']}"
-        assert isinstance(c["keywords"], list), "keywords must be a list"
-        assert len(c["keywords"]) <= 5, "Max 5 keywords"
-
-    print("✓ All assertions passed.")

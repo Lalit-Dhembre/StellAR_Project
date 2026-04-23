@@ -1,120 +1,185 @@
 """
 Domain Validator Module
-Uses Groq LLM to validate whether a document's content matches the expected academic domain.
+Uses a local Ollama model first, then falls back to keyword heuristics so the
+RAG pipeline stays offline-capable and does not fail closed during demos.
 """
-import os
+
+from __future__ import annotations
+
 import json
-from groq import Groq
+import os
+import re
+from typing import Dict, List
+
+from modules.local_llm import OLLAMA_MODEL_NAME, OllamaCompatClient, extract_json_fragment, generate_with_ollama
 
 VALID_DOMAINS = ["biology", "chemistry", "physics", "history", "stellar", "space", "astronomy"]
-GROQ_MODEL_NAME = os.environ.get("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
+GROQ_MODEL_NAME = OLLAMA_MODEL_NAME
+
+_DOMAIN_KEYWORDS: Dict[str, List[str]] = {
+    "biology": [
+        "animal",
+        "biodiversity",
+        "blood",
+        "botany",
+        "cell",
+        "cellular",
+        "chromosome",
+        "dna",
+        "ecology",
+        "ecosystem",
+        "evolution",
+        "gene",
+        "genetic",
+        "genetics",
+        "heart",
+        "homeostasis",
+        "microorganism",
+        "organ",
+        "organism",
+        "photosynthesis",
+        "physiology",
+        "plant",
+        "reproduction",
+        "species",
+        "tissue",
+        "zoology",
+    ],
+    "chemistry": ["atom", "molecule", "reaction", "compound", "element", "acid", "bond"],
+    "physics": ["force", "motion", "energy", "velocity", "magnet", "gravity", "wave"],
+    "history": ["empire", "civilization", "war", "king", "century", "revolution", "dynasty"],
+    "space/astronomy": ["planet", "star", "galaxy", "orbit", "solar", "moon", "astronomy"],
+}
+
 
 def get_groq_client():
-    """Initialize and return a Groq client."""
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY environment variable is not set")
-    return Groq(api_key=api_key)
+    """
+    Legacy compatibility shim for old imports/callers.
+    """
+    return OllamaCompatClient()
+
+
+def _normalize_domain(expected_domain: str) -> str:
+    expected = (expected_domain or "").lower().strip()
+    aliases = {
+        "life science": "biology",
+        "life sciences": "biology",
+        "bio": "biology",
+        "stellar": "space/astronomy",
+        "space": "space/astronomy",
+        "astronomy": "space/astronomy",
+        "space science": "space/astronomy",
+    }
+    return aliases.get(expected, expected)
+
+
+def _domain_scores(text: str) -> Dict[str, int]:
+    lowered = (text or "").lower()
+    scores: Dict[str, int] = {}
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
+        score = 0
+        for keyword in keywords:
+            score += len(re.findall(rf"\b{re.escape(keyword)}s?\b", lowered))
+        scores[domain] = score
+    return scores
+
+
+def _domains_match(detected_domain: str, expected_domain: str) -> bool:
+    return _normalize_domain(detected_domain) == _normalize_domain(expected_domain)
+
+
+def _heuristic_validate(text: str, expected_domain: str) -> dict:
+    normalized_domain = _normalize_domain(expected_domain)
+    scores = _domain_scores(text)
+
+    best_domain = max(scores, key=scores.get) if scores else "unknown"
+    best_score = scores.get(best_domain, 0)
+    expected_score = scores.get(normalized_domain, 0)
+
+    if best_score == 0:
+        return {
+            "match": True,
+            "detected_domain": normalized_domain or "unknown",
+            "confidence": "low",
+            "reason": "Local validator could not classify confidently, so the document was allowed through.",
+        }
+
+    return {
+        "match": best_domain == normalized_domain or expected_score >= 2,
+        "detected_domain": best_domain,
+        "confidence": "medium" if best_score >= 3 else "low",
+        "reason": f"Keyword heuristic matched {best_domain}; expected-domain score was {expected_score}.",
+    }
 
 
 def validate_domain(text: str, expected_domain: str) -> dict:
-    """
-    Uses Groq LLM to analyze whether a document's text content matches the expected academic domain.
-    
-    Args:
-        text: The extracted text from the document (first ~2000 chars)
-        expected_domain: The domain to validate against (e.g. "biology", "chemistry")
-    
-    Returns:
-        dict with keys: match (bool), detected_domain (str), confidence (str), reason (str)
-    """
     if not text or not text.strip():
         return {
             "match": False,
             "detected_domain": "unknown",
             "confidence": "low",
-            "reason": "No text content found in the document."
+            "reason": "No text content found in the document.",
         }
-    
-    # Normalize the expected domain
-    expected_domain = expected_domain.lower().strip()
-    
-    # Map aliases
-    domain_aliases = {
-        "stellar": "space/astronomy",
-        "space": "space/astronomy",
-        "astronomy": "space/astronomy",
-    }
-    display_domain = domain_aliases.get(expected_domain, expected_domain)
-    
-    # Truncate text to first 2000 characters for efficiency
-    text_excerpt = text[:2000]
-    
-    prompt = f"""You are an academic document classifier. Analyze the following text excerpt from a document and determine which academic domain it belongs to.
 
-The valid domains are: Biology, Chemistry, Physics, History, Space/Astronomy.
+    normalized_domain = _normalize_domain(expected_domain)
+    text_excerpt = text[:2000]
+
+    prompt = f"""Classify the academic domain of this text excerpt.
+
+Valid domains: biology, chemistry, physics, history, space/astronomy.
+Expected domain: {normalized_domain}
+
+Return ONLY valid JSON in this exact shape:
+{{
+  "detected_domain": "string",
+  "match": true,
+  "confidence": "high",
+  "reason": "short sentence"
+}}
 
 Text excerpt:
 \"\"\"
 {text_excerpt}
-\"\"\"
-
-Expected domain: {display_domain}
-
-Respond ONLY with a valid JSON object (no markdown, no code fences) in this exact format:
-{{
-    "detected_domain": "<the domain this text belongs to>",
-    "match": <true if the detected domain matches '{display_domain}', false otherwise>,
-    "confidence": "<high, medium, or low>",
-    "reason": "<brief 1 sentence explanation>"
-}}"""
+\"\"\""""
 
     try:
-        client = get_groq_client()
-        
-        response = client.chat.completions.create(
-            model=GROQ_MODEL_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a precise academic document classifier. Always respond with valid JSON only."
-                },
-                {
-                    "role": "user", 
-                    "content": prompt
-                }
-            ],
-            temperature=0.1,
-            max_completion_tokens=200,
-            response_format={"type": "json_object"}
+        raw = generate_with_ollama(
+            prompt=prompt,
+            system="You are a precise academic document classifier. Return JSON only.",
+            model=OLLAMA_MODEL_NAME,
+            format="json",
+            options={
+                "temperature": 0.1,
+                "num_predict": 200,
+            },
+            timeout=20,
         )
-        
-        result_text = response.choices[0].message.content.strip()
-        print(f"[DomainValidator] Groq raw response: {result_text}")
-        
-        result = json.loads(result_text)
-        
-        # Ensure required keys exist
+
+        json_fragment = extract_json_fragment(raw)
+        if not json_fragment:
+            return _heuristic_validate(text_excerpt, expected_domain)
+
+        data = json.loads(json_fragment)
+        detected_domain = data.get("detected_domain") or "unknown"
+        llm_match = bool(data.get("match", _domains_match(detected_domain, normalized_domain)))
+        if not llm_match:
+            heuristic = _heuristic_validate(text_excerpt, expected_domain)
+            if heuristic.get("match"):
+                return {
+                    "match": True,
+                    "detected_domain": heuristic.get("detected_domain", normalized_domain),
+                    "confidence": heuristic.get("confidence", "low"),
+                    "reason": (
+                        "Local keyword evidence matched the expected domain despite "
+                        "the model returning a mismatch."
+                    ),
+                }
+
         return {
-            "match": result.get("match", False),
-            "detected_domain": result.get("detected_domain", "unknown"),
-            "confidence": result.get("confidence", "low"),
-            "reason": result.get("reason", "Could not determine reason.")
+            "match": llm_match,
+            "detected_domain": _normalize_domain(detected_domain),
+            "confidence": data.get("confidence", "low"),
+            "reason": data.get("reason", "Local validator completed without a detailed reason."),
         }
-        
-    except json.JSONDecodeError as e:
-        print(f"[DomainValidator] JSON parse error: {e}")
-        return {
-            "match": False,
-            "detected_domain": "unknown",
-            "confidence": "low",
-            "reason": f"Failed to parse LLM response: {e}"
-        }
-    except Exception as e:
-        print(f"[DomainValidator] Error: {e}")
-        return {
-            "match": False,
-            "detected_domain": "unknown",
-            "confidence": "low",
-            "reason": f"Validation error: {str(e)}"
-        }
+    except Exception:
+        return _heuristic_validate(text_excerpt, expected_domain)

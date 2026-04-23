@@ -99,7 +99,7 @@ def process_content():
             return jsonify({'error': 'Could not extract text from the file.'}), 400
 
         # Step 1.5: Domain Validation
-        expected_domain = request.form.get("expected_domain", "stellar")
+        expected_domain = request.form.get("expected_domain", "biology")
         logger.info(f"Validating domain: expected '{expected_domain}'")
         validation = validate_domain(extracted_text, expected_domain)
         if not validation.get("match"):
@@ -123,37 +123,34 @@ def process_content():
 
         # Step 3: Extract Concepts (LLM)
         logger.info(f"Extracting concepts from {len(chunks)} chunks")
-        concept_groups = extract_concepts(chunks)
+        all_concepts = extract_concepts(chunks)
         
-        # Flatten concept lists and filter duplicates
-        seen_titles = set()
+        # extract_concepts already returns a flat, deduplicated list.
+        # Ensure every concept has an 'id' and cap at 30.
         flat_concepts = []
-        for group in concept_groups:
-            # handle case where concept group is a list or dict
-            iterable = group if isinstance(group, list) else [group]
-            for concept in iterable:
-                if not isinstance(concept, dict):
-                    continue
-                title = concept.get("title", "").strip().lower()
-                if not title or title in seen_titles:
-                    continue
-                seen_titles.add(title)
-                
-                # Make sure every concept has a clean 'id'
-                if "id" not in concept:
-                    concept["id"] = f"concept-{uuid.uuid4().hex[:8]}"
-                    
-                flat_concepts.append(concept)
-                
-                # We limit extreme amounts of concepts just to be safe
-                if len(flat_concepts) >= 30:
-                    break
+        for concept in all_concepts:
+            if not isinstance(concept, dict):
+                continue
+            if "id" not in concept:
+                concept["id"] = f"concept-{uuid.uuid4().hex[:8]}"
+            flat_concepts.append(concept)
             if len(flat_concepts) >= 30:
                 break
 
         # Step 4: Retrieve Images
+        # Wrapped in try/except: image failures should not crash the pipeline.
+        # Concepts without images are still useful for script generation and 3D.
         logger.info(f"Retrieving images for {len(flat_concepts)} concepts")
-        enriched_concepts = retrieve_images(flat_concepts)
+        try:
+            enriched_concepts = retrieve_images(flat_concepts)
+        except Exception as img_err:
+            logger.error(f"Image retrieval pipeline failed: {img_err}")
+            # Return concepts without images rather than crashing
+            enriched_concepts = flat_concepts
+            for c in enriched_concepts:
+                c.setdefault("image_url", None)
+                c.setdefault("image_caption", None)
+                c.setdefault("source", "error")
         
         # Cache every final concept back to Redis
         for c in enriched_concepts:
