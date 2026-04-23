@@ -4,8 +4,7 @@ Production-grade educational image retriever for the StellAR backend.
 Priority:
     1. Cache
     2. Wikipedia (Fast, Free)
-    3. Google Custom Search (High Quality Fallback)
-    4. Best-effort fallback (first available image if ranking fails)
+    3. SerpAPI / Google Images (High Quality Fallback)
 """
 
 import json
@@ -228,30 +227,27 @@ def fetch_wikipedia_images(title: str) -> List[Dict[str, Any]]:
     logger.info(f"Wikipedia returned {len(results)} candidate(s) for '{title}'")
     return results[:5]
 
-def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
+def fetch_serpapi_images(concept: Dict) -> List[Dict[str, Any]]:
     """
-    Fetch images from Google Custom Search API.
-    Requires GOOGLE_CUSTOM_SEARCH (API key) and GOOGLE_CX (search engine ID).
+    Fetch images via SerpAPI (Google Images engine).
+    Requires SERPAPI env var with a valid API key.
     """
-    api_key = os.environ.get("GOOGLE_CUSTOM_SEARCH")
-    cx = os.environ.get("GOOGLE_CX")
-    if not api_key or not cx:
-        logger.warning("Google API keys not found (need GOOGLE_CUSTOM_SEARCH and GOOGLE_CX). Skipping Google fallback.")
+    api_key = os.environ.get("SERPAPI")
+    if not api_key:
+        logger.warning("SERPAPI key not found in environment. Skipping SerpAPI fallback.")
         return []
 
     title = concept.get("title", "")
-    keywords = " ".join(concept.get("keywords", [])[:3])  # Limit keywords to avoid overly long queries
+    keywords = " ".join(concept.get("keywords", [])[:3])
     query = f"{title} {keywords} educational diagram".strip()
     
-    logger.info(f"Fetching Google images for query: {query}")
-    url = "https://www.googleapis.com/customsearch/v1"
+    logger.info(f"Fetching SerpAPI images for query: {query}")
+    url = "https://serpapi.com/search.json"
     params = {
+        "engine": "google_images",
         "q": query,
-        "cx": cx,
-        "key": api_key,
-        "searchType": "image",
+        "api_key": api_key,
         "num": MAX_IMAGES,
-        "imgSize": "large",
         "safe": "active",
     }
     
@@ -260,30 +256,30 @@ def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.HTTPError as e:
-        # Log specific HTTP errors (quota, auth issues)
-        logger.warning(f"Google Search HTTP error: {e.response.status_code} - {e.response.text[:200]}")
+        status = e.response.status_code if e.response else "?"
+        body = e.response.text[:200] if e.response else ""
+        logger.warning(f"SerpAPI HTTP error: {status} - {body}")
         return []
     except Exception as e:
-        logger.warning(f"Google Search request failed: {e}")
+        logger.warning(f"SerpAPI request failed: {e}")
         return []
 
     results = []
-    items = data.get("items", [])
-    for img in items:
-        link = img.get("link", "")
+    items = data.get("images_results", [])
+    for img in items[:MAX_IMAGES]:
+        link = img.get("original", "")
         caption = img.get("title", "")
         
-        # Skip if no URL
         if not link:
             continue
             
         results.append({
             "image_url": link,
             "image_caption": caption,
-            "source": "google"
+            "source": "serpapi"
         })
         
-    logger.info(f"Google returned {len(results)} candidate(s) for '{title}'")
+    logger.info(f"SerpAPI returned {len(results)} candidate(s) for '{title}'")
     return results
 
 # ---------------------------------------------------------
@@ -293,7 +289,7 @@ def fetch_google_images(concept: Dict) -> List[Dict[str, Any]]:
 def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
     """
     Retrieve the best image for a concept using the priority chain:
-    Cache → Wikipedia → Google → Fallback.
+    Cache → Wikipedia → SerpAPI → Fallback.
     """
     title = concept.get("title", "").strip()
     
@@ -327,17 +323,17 @@ def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
         _set_cached_image(title, final_result)
         return final_result
 
-    # 3. GOOGLE API LAYER (PAID FALLBACK)
-    logger.info(f"Wikipedia insufficient for '{title}' (best score={best_wiki.get('score', 0):.3f}). Trying Google API.")
-    google_candidates = fetch_google_images(concept)
-    best_google = rank_images(concept_text, google_candidates)
+    # 3. SERPAPI LAYER (PAID FALLBACK)
+    logger.info(f"Wikipedia insufficient for '{title}' (best score={best_wiki.get('score', 0):.3f}). Trying SerpAPI.")
+    serp_candidates = fetch_serpapi_images(concept)
+    best_serp = rank_images(concept_text, serp_candidates)
 
-    if best_google and best_google.get("score", 0.0) >= GOOGLE_THRESHOLD:
-        logger.info(f"Google image accepted for '{title}' (score={best_google['score']:.3f} >= {GOOGLE_THRESHOLD})")
+    if best_serp and best_serp.get("score", 0.0) >= GOOGLE_THRESHOLD:
+        logger.info(f"SerpAPI image accepted for '{title}' (score={best_serp['score']:.3f} >= {GOOGLE_THRESHOLD})")
         final_result = {
-            "image_url": best_google["image_url"],
-            "image_caption": best_google["image_caption"],
-            "source": "google"
+            "image_url": best_serp["image_url"],
+            "image_caption": best_serp["image_caption"],
+            "source": "serpapi"
         }
         _set_cached_image(title, final_result)
         return final_result
@@ -345,7 +341,7 @@ def retrieve_best_image(concept: Dict[str, Any]) -> Dict[str, Any]:
     # 4. BEST-EFFORT FALLBACK
     # If semantic ranking was too strict, pick the best available image anyway.
     # An image (even imperfect) is better than no image for the AR pipeline.
-    fallback_candidate = best_wiki or best_google
+    fallback_candidate = best_wiki or best_serp
     if fallback_candidate and fallback_candidate.get("image_url"):
         logger.info(f"Using best-effort fallback image for '{title}' (score={fallback_candidate.get('score', 0):.3f})")
         final_result = {

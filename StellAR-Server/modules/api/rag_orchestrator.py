@@ -21,43 +21,51 @@ rag_orchestrator_bp = Blueprint('rag_orchestrator', __name__, url_prefix='/api/r
 # -------------------------------
 # Redis Cache Configuration
 # -------------------------------
-# We initialize Redis lazily to avoid blocking on startup.
+# We initialize Redis lazily and remember failures to avoid repeated timeouts.
 _redis_client = None
+_redis_disabled = False
 
 def get_redis():
-    global _redis_client
-    if _redis_client is None:
+    global _redis_client, _redis_disabled
+    if _redis_disabled:
+        return None
+    if _redis_client is not None:
+        return _redis_client
+    try:
         import redis
         redis_url = os.environ.get("REDIS_URL") or os.environ.get("CELERY_BROKER_URL") or "redis://localhost:6379/0"
-        _redis_client = redis.Redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=1)
-    return _redis_client
+        client = redis.Redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=1)
+        client.ping()
+        _redis_client = client
+        return _redis_client
+    except Exception as e:
+        logger.warning(f"Redis unavailable, using in-memory cache for concepts: {e}")
+        _redis_disabled = True
+        return None
 
 _fallback_cache = {}
 
 def cache_concept(concept_id: str, data: dict):
     """Store a concept in Redis, fallback to local dict."""
-    try:
-        r = get_redis()
-        r.ping() # Test connection quickly
-        r.setex(f"stellar:concept:{concept_id}", 86400, json.dumps(data))
-    except Exception as e:
-        logger.warning(f"Redis cache write failed: {e}. Falling back to in-memory dict.")
-        _fallback_cache[concept_id] = data
+    _fallback_cache[concept_id] = data  # Always store locally
+    r = get_redis()
+    if r:
+        try:
+            r.setex(f"stellar:concept:{concept_id}", 86400, json.dumps(data))
+        except Exception:
+            pass
 
 def get_cached_concept(concept_id: str) -> Dict[str, Any]:
     """Retrieve a concept from Redis, fallback to local dict."""
-    try:
-        r = get_redis()
-        r.ping()
-        data = r.get(f"stellar:concept:{concept_id}")
-        if data:
-            return json.loads(data)
-    except Exception as e:
-        logger.warning(f"Redis cache read failed: {e}. Checking in-memory dict.")
-        if concept_id in _fallback_cache:
-            return _fallback_cache[concept_id]
-            
-    return None
+    r = get_redis()
+    if r:
+        try:
+            data = r.get(f"stellar:concept:{concept_id}")
+            if data:
+                return json.loads(data)
+        except Exception:
+            pass
+    return _fallback_cache.get(concept_id)
 
 # -------------------------------
 # Endpoints

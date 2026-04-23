@@ -49,6 +49,11 @@ Return JSON only."""
 _STOP_WORDS = {
     "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into",
     "is", "it", "of", "on", "or", "that", "the", "their", "this", "to", "with",
+    # Common sentence-starters that match definition patterns but aren't concepts
+    "there", "these", "those", "they", "them", "then", "than", "thus", "through",
+    "each", "every", "some", "many", "most", "such", "its", "also", "both",
+    "other", "another", "several", "various", "which", "when", "where", "while",
+    "what", "how", "why", "here", "after", "before", "between", "during",
 }
 
 _VISUAL_TERMS = [
@@ -238,6 +243,9 @@ def _fallback_extract_concepts_json(text_chunk: str) -> List[Dict[str, str]]:
     def add_concept(term: str, sentence: str) -> None:
         normalized = term.lower().strip()
         if not normalized or normalized in seen:
+            return
+        # Reject single words that are too short or are stop words
+        if len(normalized.split()) == 1 and (len(normalized) < 3 or normalized in _STOP_WORDS):
             return
         seen.add(normalized)
         concepts.append({

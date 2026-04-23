@@ -1,6 +1,7 @@
 import os
 import uuid
 import logging
+from io import BytesIO
 from typing import List, Dict, Any
 
 try:
@@ -8,22 +9,45 @@ try:
 except ImportError:
     fitz = None
 
-from supabase import create_client, Client
-
 logger = logging.getLogger(__name__)
 
-# Cache the client so we don't recreate it every time
-_supabase_client: Client = None
 
-def get_supabase_client() -> Client:
-    global _supabase_client
-    if _supabase_client is None:
-        url = os.environ.get("SUPABASE_URL")
-        key = os.environ.get("SUPABASE_KEY")
-        if not url or not key:
-            raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment.")
-        _supabase_client = create_client(url, key)
-    return _supabase_client
+def _get_supabase_client():
+    """
+    Get the Supabase client via the shared SupabaseService singleton.
+    This avoids creating a duplicate client and ensures consistent initialization.
+    """
+    try:
+        from modules.supabase_service import supabase_service
+        if not supabase_service.initialized:
+            supabase_service.initialize()
+        if not supabase_service.initialized:
+            logger.error("Supabase service failed to initialize")
+            return None
+        return supabase_service.get_client()
+    except Exception as e:
+        logger.error(f"Cannot get Supabase client: {e}")
+        return None
+
+
+def _upload_bytes_to_supabase(supabase, bucket_name: str, file_path: str,
+                               image_bytes: bytes, content_type: str) -> str:
+    """
+    Upload image bytes to Supabase Storage and return the public URL.
+    Uses a BytesIO wrapper so the supabase-py SDK receives a file-like object
+    (matching the pattern used in supabase_service.upload_file).
+    """
+    file_obj = BytesIO(image_bytes)
+    
+    supabase.storage.from_(bucket_name).upload(
+        path=file_path,
+        file=file_obj,
+        file_options={"content-type": content_type}
+    )
+    
+    public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
+    return public_url
+
 
 def extract_and_upload_pdf_images(pdf_path: str, bucket_name: str = "images") -> List[Dict[str, Any]]:
     """
@@ -37,10 +61,8 @@ def extract_and_upload_pdf_images(pdf_path: str, bucket_name: str = "images") ->
     if not pdf_path.lower().endswith(".pdf"):
         return []
 
-    try:
-        supabase = get_supabase_client()
-    except Exception as e:
-        logger.error(f"Cannot initialize Supabase client for image upload: {e}")
+    supabase = _get_supabase_client()
+    if supabase is None:
         return []
 
     uploaded_images = []
@@ -62,7 +84,13 @@ def extract_and_upload_pdf_images(pdf_path: str, bucket_name: str = "images") ->
                 image_bytes = base_image["image"]
                 image_ext = base_image["ext"]
                 
-                # We skip extremely tiny images which are usually artifacts/icons (e.g. < 1kb)
+                # Normalize extension for content-type
+                if image_ext == "jpg":
+                    content_type = "image/jpeg"
+                else:
+                    content_type = f"image/{image_ext}"
+                
+                # Skip extremely tiny images (usually artifacts/icons)
                 if len(image_bytes) < 1000:
                     continue
                 
@@ -71,14 +99,10 @@ def extract_and_upload_pdf_images(pdf_path: str, bucket_name: str = "images") ->
                 file_path = f"extracted/{filename}"
                 
                 # Upload to Supabase bucket
-                response = supabase.storage.from_(bucket_name).upload(
-                    file_path,
-                    image_bytes,
-                    {"content-type": f"image/{image_ext}"}
+                public_url = _upload_bytes_to_supabase(
+                    supabase, bucket_name, file_path,
+                    image_bytes, content_type
                 )
-                
-                # Get public URL
-                public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
                 
                 uploaded_images.append({
                     "id": f"native-{uuid.uuid4().hex[:8]}",
@@ -88,12 +112,13 @@ def extract_and_upload_pdf_images(pdf_path: str, bucket_name: str = "images") ->
                     "source": "pdf_native"
                 })
                 
-                logger.info(f"Successfully extracted and uploaded PDF image: {filename}")
+                logger.info(f"Extracted and uploaded PDF image: {filename} ({len(image_bytes)} bytes)")
                 
             except Exception as e:
-                logger.warning(f"Failed to process image {img_index} on page {page_index}: {e}")
+                logger.warning(f"Failed to process image {img_index} on page {page_index + 1}: {e}")
                 
     pdf_document.close()
+    logger.info(f"PDF image extraction complete: {len(uploaded_images)} image(s) from {pdf_path}")
     return uploaded_images
 
 def upload_raw_image(image_path: str, bucket_name: str = "images") -> List[Dict[str, Any]]:
@@ -104,10 +129,8 @@ def upload_raw_image(image_path: str, bucket_name: str = "images") -> List[Dict[
     if not os.path.exists(image_path):
         return []
         
-    try:
-        supabase = get_supabase_client()
-    except Exception as e:
-        logger.error(f"Cannot initialize Supabase client for raw image upload: {e}")
+    supabase = _get_supabase_client()
+    if supabase is None:
         return []
         
     try:
@@ -115,21 +138,20 @@ def upload_raw_image(image_path: str, bucket_name: str = "images") -> List[Dict[
             image_bytes = f.read()
             
         ext = os.path.splitext(image_path)[1].lower().replace('.', '')
-        if ext == 'jpg': ext = 'jpeg'
-        if not ext: ext = 'jpeg'
+        if ext == 'jpg':
+            ext = 'jpeg'
+        if not ext:
+            ext = 'jpeg'
         
         filename = f"camera_scan_{uuid.uuid4().hex[:8]}.{ext}"
         file_path = f"extracted/{filename}"
         
-        response = supabase.storage.from_(bucket_name).upload(
-            file_path,
-            image_bytes,
-            {"content-type": f"image/{ext}"}
+        public_url = _upload_bytes_to_supabase(
+            supabase, bucket_name, file_path,
+            image_bytes, f"image/{ext}"
         )
         
-        public_url = supabase.storage.from_(bucket_name).get_public_url(file_path)
-        
-        logger.info(f"Successfully uploaded raw camera image: {filename}")
+        logger.info(f"Uploaded raw camera image: {filename} ({len(image_bytes)} bytes)")
         
         return [{
             "id": f"native-{uuid.uuid4().hex[:8]}",
