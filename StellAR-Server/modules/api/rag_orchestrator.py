@@ -131,7 +131,7 @@ def process_content():
 
         # Step 3: Extract Concepts (LLM)
         logger.info(f"Extracting concepts from {len(chunks)} chunks")
-        all_concepts = extract_concepts(chunks)
+        all_concepts = extract_concepts(chunks, domain=expected_domain)
         
         # extract_concepts already returns a flat, deduplicated list.
         # Ensure every concept has an 'id' and cap at 30.

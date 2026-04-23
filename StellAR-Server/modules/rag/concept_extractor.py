@@ -1,18 +1,16 @@
 """
-Concept Extractor Module — v3 (Balanced High-Quality)
-======================================================
-Extracts comprehensive, domain-relevant educational concepts from text chunks
-using a hybrid approach:
+Concept Extractor Module
+========================
+Extracts visualizable educational concepts from text chunks using a local
+Ollama model and returns concept dicts compatible with the downstream image
+retrieval and model-generation pipeline.
 
-    1. Frequency-based core term detection (ensures fundamentals are never missed)
-    2. Section-aware LLM extraction (respects document structure)
-    3. Quality gates + relevance scoring (rejects noise)
-
-Design:
-    - Min 10-15 concepts per document
-    - 40% core / 40% structural / 20% advanced balance
-    - Exact text grounding — no renaming
-    - Precision stays high, but recall is now guaranteed for core terms
+Improvements over v1:
+- 2–5 concepts per chunk (structured: 1 main + 2–4 supporting)
+- Spell correction for common OCR/student typos
+- Rejects invalid concepts (properties, partial phrases)
+- Fallback covers anatomy, histology, classification terms
+- Minimum 10–15 concepts per document target
 """
 
 from __future__ import annotations
@@ -27,361 +25,371 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from modules.local_llm import OLLAMA_MODEL_NAME, extract_json_fragment, generate_with_ollama
 
-MAX_CONCEPTS_PER_CHUNK = 6
-MIN_CONCEPTS_TOTAL = 10
-MAX_CONCEPTS_TOTAL = 30
-MAX_CHUNK_CHARACTERS = int(os.environ.get("RAG_CONCEPT_CHUNK_CHARS", "1800"))
-OLLAMA_TIMEOUT_SECONDS = int(os.environ.get("RAG_CONCEPT_TIMEOUT_SECONDS", "45"))
-RELEVANCE_THRESHOLD = 0.35  # Slightly relaxed to not lose core terms
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+MAX_CONCEPTS_PER_CHUNK = 5        # Raised from 6 (no change) but enforced at 5 per call
+MIN_CONCEPTS_PER_CHUNK = 2        # Always try to get at least 2
+TARGET_CONCEPTS_PER_DOC = 12      # Target for the entire document
+MAX_CHUNK_CHARACTERS    = int(os.environ.get("RAG_CONCEPT_CHUNK_CHARS", "1800"))
+OLLAMA_TIMEOUT_SECONDS  = int(os.environ.get("RAG_CONCEPT_TIMEOUT_SECONDS", "60"))
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# LLM Prompts
+# Spell correction dictionary  (common OCR / student typo → correct form)
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a precise educational concept extractor for an Augmented Reality learning app.
-
-Return ONLY a valid JSON array. No markdown, no explanation, no code fences.
-
-Each item MUST have exactly these keys:
-- "concept": the EXACT term as it appears in the text (do not rename or paraphrase)
-- "description": 1-2 sentence explanation grounded strictly in the provided text
-
-RULES:
-1. Extract specific scientific terms EXACTLY as they appear in the text.
-2. Include foundational terms (e.g., "neuron", "nephron", "mitochondria") if they are central to the text.
-3. Include structural terms (e.g., "Bowman's capsule", "Loop of Henle", "axon terminal").
-4. Include process/function terms (e.g., "micturition reflex", "synaptic transmission").
-5. Do NOT extract generic filler words: organ, system, body, process, structure, base, layer, all, type, part.
-6. Do NOT extract pronouns, determiners, or broken sentence fragments.
-7. Do NOT hallucinate — only extract terms explicitly present in the text.
-8. Return 4-6 concepts per chunk, covering structure, function, and classification.
-9. If nothing specific is present, return []."""
-
-USER_PROMPT_TEMPLATE = """Text chunk:
-\"\"\"
-{chunk}
-\"\"\"
-
-Extract 4-6 specific scientific concepts from this text.
-Use the EXACT terms from the text — do not rename them.
-Cover: structures, functions, classifications, and processes.
-Return ONLY a JSON array."""
-
-# ---------------------------------------------------------------------------
-# Blocklists
-# ---------------------------------------------------------------------------
-
-_BLOCKED_SINGLE_WORDS = {
-    # Pronouns, determiners, conjunctions
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in",
-    "into", "is", "it", "of", "on", "or", "that", "the", "their", "this",
-    "to", "with", "there", "these", "those", "they", "them", "then", "than",
-    "thus", "through", "each", "every", "some", "many", "most", "such", "its",
-    "also", "both", "other", "another", "several", "various", "which", "when",
-    "where", "while", "what", "how", "why", "here", "after", "before",
-    "between", "during", "if", "but", "not", "no", "so", "all", "any",
-    # Overly generic — these are NOT concepts
-    "organ", "system", "body", "process", "function", "structure", "base",
-    "layer", "type", "part", "group", "form", "unit", "region", "area",
-    "role", "rate", "level", "factor", "amount", "result", "effect",
-    "change", "stage", "step", "phase", "side", "end", "way", "use",
-    "term", "name", "kind", "class", "order", "time", "case",
-    "water", "food", "air", "heat", "cold", "size", "number",
+_SPELL_CORRECTIONS: Dict[str, str] = {
+    # Histology / Epithelium
+    "globlet":          "goblet",
+    "gobelt":           "goblet",
+    "ephithelium":      "epithelium",
+    "epethelium":       "epithelium",
+    "epitheliun":       "epithelium",
+    "squameous":        "squamous",
+    "squamaus":         "squamous",
+    "collumar":         "columnar",
+    "columar":          "columnar",
+    "cuboidal":         "cuboidal",
+    "cubodial":         "cuboidal",
+    "basment":          "basement",
+    "basemant":         "basement",
+    "microvily":        "microvilli",
+    "microvillie":      "microvilli",
+    "cila":             "cilia",
+    "cillia":           "cilia",
+    "flagela":          "flagella",
+    "flagella":         "flagella",
+    "secretoin":        "secretion",
+    "absorbtion":       "absorption",
+    "absorbsion":       "absorption",
+    # Cell biology
+    "mitocondria":      "mitochondria",
+    "mitochondrea":     "mitochondria",
+    "nuclues":          "nucleus",
+    "nuclius":          "nucleus",
+    "cytoplasim":       "cytoplasm",
+    "ribosome":         "ribosome",
+    "ribsome":          "ribosome",
+    "chromosone":       "chromosome",
+    "chormosome":       "chromosome",
+    "vacuole":          "vacuole",
+    "vacuol":           "vacuole",
+    "lysosome":         "lysosome",
+    "lysosme":          "lysosome",
+    "endoplasmic reticulem": "endoplasmic reticulum",
+    "golgi apperatus":  "golgi apparatus",
+    "golgi aparatus":   "golgi apparatus",
+    # Plant biology
+    "clorophyll":       "chlorophyll",
+    "chlorofil":        "chlorophyll",
+    "chloroplats":      "chloroplasts",
+    "photosynethsis":   "photosynthesis",
+    "photosythesis":    "photosynthesis",
+    "stomatta":         "stomata",
+    "stomatta":         "stomata",
+    # General biology
+    "difusion":         "diffusion",
+    "osmossis":         "osmosis",
+    "meiosos":          "meiosis",
+    "mitossis":         "mitosis",
+    "enzime":           "enzyme",
+    "protien":          "protein",
+    "glucouse":         "glucose",
+    "haemogloben":      "haemoglobin",
+    "haemoglobim":      "haemoglobin",
+    # Physics
+    "velosity":         "velocity",
+    "accelaration":     "acceleration",
+    "fricton":          "friction",
+    "magnitism":        "magnetism",
+    "momentem":         "momentum",
+    "fource":           "force",
+    "electon":          "electron",
+    "lense":            "lens",
+    # Space / Astronomy
+    "astroid":          "asteroid",
+    "meteroid":         "meteoroid",
+    "galexy":           "galaxy",
+    "satelite":         "satellite",
+    "solor":            "solar",
+    "orbet":            "orbit",
+    "planetery":        "planetary",
+    "meteorite":        "meteorite",
+    # History
+    "civilzation":      "civilization",
+    "empeir":           "empire",
+    "pharoah":          "pharaoh",
+    "revolusion":       "revolution",
+    "dynesty":          "dynasty",
+    "architecure":      "architecture",
+    "artifcat":         "artifact",
 }
 
-_BLOCKED_PHRASES = {
-    "blood vessel", "body part", "organ system", "body system",
-    "living organism", "chemical reaction", "basic unit", "main function",
-    "important role", "various types", "different types",
-}
 
-_FRAGMENT_PATTERN = re.compile(
-    r"^(if|when|where|which|that|the|a|an|and|or|but|as|by|in|on|at|to|of|for)\s",
-    re.IGNORECASE
-)
-
-# ---------------------------------------------------------------------------
-# Embedding model for relevance scoring
-# ---------------------------------------------------------------------------
-
-_embedding_model = None
-_embedding_cache: Dict[str, Any] = {}
-
-
-def _get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        except Exception as e:
-            logger.warning(f"Could not load embedding model: {e}")
-    return _embedding_model
-
-
-def _get_embedding(text: str):
-    text = re.sub(r"\s+", " ", (text or "").strip().lower())
-    if text in _embedding_cache:
-        return _embedding_cache[text]
-    model = _get_embedding_model()
-    if model is None:
-        return None
-    emb = model.encode([text])[0]
-    _embedding_cache[text] = emb
-    return emb
-
-
-def _compute_relevance(concept_text: str, document_text: str) -> float:
-    from sklearn.metrics.pairwise import cosine_similarity
-    concept_emb = _get_embedding(concept_text)
-    doc_emb = _get_embedding(document_text[:2000])
-    if concept_emb is None or doc_emb is None:
-        return 1.0
-    return float(cosine_similarity([concept_emb], [doc_emb])[0][0])
-
-
-# ---------------------------------------------------------------------------
-# Frequency-based core term detection
-# ---------------------------------------------------------------------------
-
-def _extract_noun_phrases(text: str) -> List[str]:
-    """
-    Extract candidate noun phrases from text using regex patterns.
-    Matches capitalized multi-word terms and known scientific patterns.
-    """
-    patterns = [
-        # Multi-word capitalized terms: "Loop of Henle", "Bowman's capsule"
-        r"\b([A-Z][a-z]+(?:\s+(?:of|and|the|in|for)\s+)?[A-Z][a-z]+(?:'s)?(?:\s+[a-z]+)?)\b",
-        # Terms with apostrophes: "Bowman's capsule", "Henle's loop"
-        r"\b([A-Z][a-z]+'s\s+[a-z]+(?:\s+[a-z]+)?)\b",
-        # Hyphenated terms: "myelinated nerve fibre"
-        r"\b([a-z]+-[a-z]+(?:\s+[a-z]+){1,2})\b",
-    ]
-
-    candidates = []
-    for pattern in patterns:
-        for match in re.finditer(pattern, text):
-            term = match.group(1).strip()
-            if len(term) > 4 and term.lower() not in _BLOCKED_SINGLE_WORDS:
-                candidates.append(term)
-    return candidates
-
-
-def _scan_core_terms(full_text: str) -> List[Dict[str, Any]]:
-    """
-    Scan the full document for high-frequency scientific terms.
-    These are 'core terms' that must be included regardless of LLM output.
-
-    Returns terms sorted by frequency (descending).
-    """
-    text_lower = full_text.lower()
-
-    # Tokenize into words, count frequencies of meaningful words
-    words = re.findall(r"\b[a-z][a-z'-]{2,}\b", text_lower)
-    word_freq = Counter(words)
-
-    # Also count bigrams and trigrams
-    bigrams = [f"{words[i]} {words[i+1]}" for i in range(len(words) - 1)]
-    trigrams = [f"{words[i]} {words[i+1]} {words[i+2]}" for i in range(len(words) - 2)]
-
-    ngram_freq = Counter(bigrams + trigrams)
-
-    # Filter: keep only terms that appear 2+ times and aren't blocked
-    core_candidates: List[Tuple[str, int]] = []
-
-    # Single scientific words (must appear 3+ times to be "core")
-    for word, freq in word_freq.items():
-        if freq >= 3 and word not in _BLOCKED_SINGLE_WORDS and len(word) >= 5:
-            # Check it's not a common English word by verifying it's in a meaningful context
-            core_candidates.append((word, freq))
-
-    # Multi-word terms (must appear 2+ times)
-    for ngram, freq in ngram_freq.items():
-        if freq >= 2:
-            ngram_words = ngram.split()
-            # Skip if all words are blocked
-            if all(w in _BLOCKED_SINGLE_WORDS for w in ngram_words):
-                continue
-            # Skip if it's a blocked phrase
-            if ngram in _BLOCKED_PHRASES:
-                continue
-            core_candidates.append((ngram, freq))
-
-    # Sort by frequency
-    core_candidates.sort(key=lambda x: x[1], reverse=True)
-
-    # Build concept dicts for the top core terms
-    core_concepts = []
-    seen = set()
-
-    for term, freq in core_candidates[:20]:  # Consider top 20 candidates
-        normalized = term.lower().strip()
-        if normalized in seen:
-            continue
-
-        # Find the sentence where this term first appears for description
-        description = _find_best_sentence(full_text, term)
-        if not description or len(description) < 15:
-            description = f"{term.title()} is a key concept discussed extensively in this text."
-
-        # Quality check
-        if not _is_quality_concept(term.title() if len(term.split()) == 1 else _title_case(term), description):
-            continue
-
-        seen.add(normalized)
-        core_concepts.append({
-            "concept": term.title() if len(term.split()) == 1 else _title_case(term),
-            "description": description,
-            "frequency": freq,
-            "source": "frequency_scan",
-        })
-
-    return core_concepts
-
-
-def _title_case(text: str) -> str:
-    """Title case but preserve short prepositions lowercase."""
-    small_words = {"of", "and", "the", "in", "for", "to", "a", "an", "or", "by", "at", "on", "vs"}
+def _spell_correct(text: str) -> str:
+    """Apply word-level spell corrections to extracted concept names."""
+    lower = text.lower().strip()
+    if lower in _SPELL_CORRECTIONS:
+        corrected = _SPELL_CORRECTIONS[lower]
+        if text and text[0].isupper():
+            return corrected.title()
+        return corrected
+    # Scan inside compound terms word by word
     words = text.split()
-    result = []
-    for i, word in enumerate(words):
-        if i == 0 or word.lower() not in small_words:
-            result.append(word.capitalize())
+    corrected_words = []
+    for w in words:
+        wl = w.lower()
+        replacement = _SPELL_CORRECTIONS.get(wl)
+        if replacement:
+            corrected_words.append(replacement.capitalize() if w[0].isupper() else replacement)
         else:
-            result.append(word.lower())
-    return " ".join(result)
-
-
-def _find_best_sentence(text: str, term: str) -> str:
-    """Find the most informative sentence containing the term."""
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
-
-    best = ""
-    best_score = 0
-
-    for sentence in sentences:
-        if pattern.search(sentence):
-            # Score: prefer sentences with "is", "are", "refers to" (definition-like)
-            score = len(sentence)
-            if re.search(r"\b(is|are|refers to|means|called|known as|defined as)\b", sentence, re.IGNORECASE):
-                score += 100  # Big boost for definitional sentences
-            if score > best_score:
-                best_score = score
-                best = sentence.strip()
-
-    if best and len(best) > 200:
-        best = best[:197].rsplit(" ", 1)[0].rstrip(",:;") + "..."
-
-    return best
+            corrected_words.append(w)
+    return " ".join(corrected_words)
 
 
 # ---------------------------------------------------------------------------
-# Section detection
+# Concepts that should always be rejected (properties, not objects/structures)
 # ---------------------------------------------------------------------------
 
-def _detect_sections(text: str) -> List[Dict[str, str]]:
-    """
-    Detect section headings in the text and split into sections.
-    Handles patterns like:
-        - "Structure of Neuron"
-        - "TYPES OF NEURONS"
-        - "1.2 Synaptic Transmission"
-    """
-    # Common heading patterns
-    heading_patterns = [
-        r"^(?:\d+\.?\d*\s+)?([A-Z][A-Z\s]{3,50})$",  # ALL CAPS lines
-        r"^(?:\d+\.?\d*\s+)?((?:[A-Z][a-z]+\s+){1,5}(?:of|and|in|for)?\s*(?:[A-Z][a-z]+\s*){0,3})$",  # Title Case
-        r"^#+\s+(.+)$",  # Markdown headings
-    ]
+_INVALID_CONCEPT_PATTERNS = [
+    re.compile(r"^\s*(single|double|multiple|many|few|large|small|thin|thick|flat|round)\s+", re.I),
+    re.compile(r"\bnucleus\s+(is|are|has)\b", re.I),       # "single nucleus" type phrase
+    re.compile(r"^[a-z][a-z]+\s+[a-z]"),                   # lowercase multi-word = likely partial phrase
+    re.compile(r"\d"),                                       # contains digits — likely a property
+    # NOTE: -tion/-ing/-ment NOT rejected: absorption, secretion, digestion are valid processes
+]
 
-    lines = text.split("\n")
-    sections: List[Dict[str, str]] = []
-    current_heading = "Introduction"
-    current_content: List[str] = []
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-
-        is_heading = False
-        for pattern in heading_patterns:
-            match = re.match(pattern, stripped)
-            if match and len(stripped) < 60 and len(stripped.split()) <= 8:
-                # Save previous section
-                if current_content:
-                    sections.append({
-                        "heading": current_heading,
-                        "content": "\n".join(current_content),
-                    })
-                current_heading = match.group(1).strip()
-                current_content = []
-                is_heading = True
-                break
-
-        if not is_heading:
-            current_content.append(stripped)
-
-    # Save last section
-    if current_content:
-        sections.append({
-            "heading": current_heading,
-            "content": "\n".join(current_content),
-        })
-
-    return sections if len(sections) > 1 else [{"heading": "Full Document", "content": text}]
+_INVALID_EXACT = {
+    "cell", "cells", "structure", "function", "type", "types",
+    "layer", "form", "shape", "size", "characteristic", "property",
+    "feature", "example", "classification", "category",
+}
 
 
-# ---------------------------------------------------------------------------
-# Quality gates
-# ---------------------------------------------------------------------------
-
-def _is_quality_concept(concept: str, description: str) -> bool:
-    concept_clean = concept.strip()
-    concept_lower = concept_clean.lower()
-
-    if not concept_clean or not description.strip():
+def _is_valid_concept(name: str) -> bool:
+    """Return True if the concept name is a real biological entity, not a property/fragment."""
+    name = name.strip()
+    if not name or len(name) < 3:
         return False
-
-    if concept_lower in _BLOCKED_SINGLE_WORDS:
+    if name.lower() in _INVALID_EXACT:
         return False
-
-    if concept_lower in _BLOCKED_PHRASES:
+    for pat in _INVALID_CONCEPT_PATTERNS:
+        if pat.search(name):
+            return False
+    # Reject if it's just stop words
+    words = [w for w in name.lower().split() if w not in _STOP_WORDS]
+    if not words:
         return False
-
-    if _FRAGMENT_PATTERN.match(concept_clean):
-        return False
-
-    words = concept_clean.split()
-
-    # Single words must be at least 4 chars
-    if len(words) == 1 and len(concept_clean) < 4:
-        return False
-
-    # Max 7 words
-    if len(words) > 7:
-        return False
-
-    # Must contain at least one alphabetic word ≥ 3 chars
-    if not any(len(w) >= 3 and w.isalpha() for w in words):
-        return False
-
-    # No purely numeric
-    if all(w.isdigit() for w in words):
-        return False
-
-    # Description must be meaningful
-    if len(description.strip()) < 10:
-        return False
-
     return True
 
 
 # ---------------------------------------------------------------------------
-# LLM extraction
+# Prompts — structured 1 main + 2–4 supporting concepts
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT_TEMPLATE = """\
+You are an expert {domain} teacher extracting educational concepts for an AR \
+learning app. Your goal is COMPREHENSIVE COVERAGE — extract every important \
+concept, structure, type, and process from the text.
+
+Return ONLY a valid JSON object with exactly this structure:
+{{
+  "main_concept": {{"concept": "...", "description": "..."}},
+  "supporting_concepts": [
+    {{"concept": "...", "description": "..."}},
+    {{"concept": "...", "description": "..."}}
+  ]
+}}
+
+Rules:
+- main_concept: the single most important visualizable object, structure, or entity.
+- supporting_concepts: 2 to 4 additional important concepts from the text.
+- Include: objects, structures, entities, layers, mechanisms, processes, \
+classifications relevant to {domain}.
+- descriptions: 1 clear sentence grounded in the text.
+- Spell all terms correctly.
+- DO NOT include: vague properties ("large size"), partial phrases, \
+abstract ideas without a physical form.
+- DO NOT include markdown, code fences, or explanation outside the JSON."""
+
+USER_PROMPT_TEMPLATE = """\
+Text chunk:
+\"\"\"
+{chunk}
+\"\"\"
+
+Extract the main concept and 2–4 supporting concepts.
+Ensure complete coverage of all types, structures, and classifications mentioned.
+Return JSON only."""
+
+
+# ---------------------------------------------------------------------------
+# Stop words (for fallback keyword extraction)
+# ---------------------------------------------------------------------------
+
+_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in",
+    "into", "is", "it", "of", "on", "or", "that", "the", "their", "this",
+    "to", "with", "there", "these", "those", "they", "them", "then", "than",
+    "thus", "through", "each", "every", "some", "many", "most", "such",
+    "its", "also", "both", "other", "another", "several", "various", "which",
+    "when", "where", "while", "what", "how", "why", "here", "after",
+    "before", "between", "during", "has", "have", "had", "was", "were",
+    "can", "may", "will", "would", "could", "should",
+}
+
+# ---------------------------------------------------------------------------
+# Expanded fallback vocabulary — covers biology, physics, space, history
+# ---------------------------------------------------------------------------
+
+_VISUAL_TERMS_BY_DOMAIN = {
+    "biology": [
+        "simple squamous epithelium",
+        "simple cuboidal epithelium",
+        "simple columnar epithelium",
+        "stratified squamous epithelium",
+        "stratified cuboidal epithelium",
+        "stratified columnar epithelium",
+        "pseudostratified columnar epithelium",
+        "transitional epithelium",
+        "compound epithelium",
+        "simple epithelium",
+        "squamous epithelium",
+        "cuboidal epithelium",
+        "columnar epithelium",
+        "epithelium",
+        "epithelial tissue",
+        "basement membrane",
+        "goblet cell",
+        "microvilli",
+        "cilia",
+        "flagella",
+        "junctional complex",
+        "tight junction",
+        "gap junction",
+        "desmosome",
+        "connective tissue",
+        "areolar tissue",
+        "adipose tissue",
+        "dense regular tissue",
+        "dense irregular tissue",
+        "hyaline cartilage",
+        "elastic cartilage",
+        "fibrocartilage",
+        "bone tissue",
+        "blood",
+        "collagen fibre",
+        "elastic fibre",
+        "reticular fibre",
+        "fibroblast",
+        "mast cell",
+        "plasma cell",
+        "macrophage",
+        "skeletal muscle",
+        "smooth muscle",
+        "cardiac muscle",
+        "muscle fibre",
+        "sarcomere",
+        "myofibril",
+        "actin",
+        "myosin",
+        "neuron",
+        "axon",
+        "dendrite",
+        "myelin sheath",
+        "schwann cell",
+        "synapse",
+        "neuroglia",
+        "heart",
+        "liver",
+        "kidney",
+        "lung",
+        "stomach",
+        "intestine",
+        "small intestine",
+        "large intestine",
+        "pancreas",
+        "spleen",
+        "brain",
+        "spinal cord",
+        "artery",
+        "vein",
+        "capillary",
+        "lymph node",
+        "nucleus",
+        "mitochondria",
+        "chloroplast",
+        "ribosome",
+        "endoplasmic reticulum",
+        "golgi apparatus",
+        "lysosome",
+        "vacuole",
+        "cell membrane",
+        "cell wall",
+        "cytoplasm",
+        "cytoskeleton",
+        "centriole",
+        "chromosome",
+        "photosynthesis",
+        "respiration",
+        "digestion",
+        "absorption",
+        "secretion",
+        "excretion",
+        "reproduction",
+        "mitosis",
+        "meiosis",
+        "osmosis",
+        "diffusion",
+        "active transport",
+        "algae",
+        "bacteria",
+        "virus",
+        "fungi",
+        "tissue",
+        "organ",
+        "organ system",
+        "organism",
+        "ecosystem",
+        "food chain",
+        "enzyme",
+        "hormone",
+        "protein",
+        "carbohydrate",
+        "lipid",
+        "amino acid",
+        "dna",
+        "rna",
+        "gene",
+        "chromosome",
+        "haemoglobin",
+        "antibody",
+        "antigen",
+    ],
+    "physics": [
+        "pendulum", "pulley", "lever", "magnet", "prism", "lens", "circuit", 
+        "battery", "resistor", "capacitor", "motor", "generator", "spring", 
+        "telescope", "microscope", "atom", "electron", "proton", "neutron", "molecule",
+        "force", "velocity", "acceleration", "friction", "gravity", "momentum"
+    ],
+    "space": [
+        "planet", "star", "galaxy", "black hole", "nebula", "comet", "asteroid", 
+        "meteor", "satellite", "moon", "solar system", "telescope", "spacecraft", 
+        "rocket", "orbit", "sun", "earth", "mars", "jupiter"
+    ],
+    "history": [
+        "pyramid", "castle", "temple", "sword", "shield", "armor", "chariot", 
+        "monument", "statue", "ruins", "artifact", "coin", "map", "crown", 
+        "throne", "colosseum", "ship", "civilization", "empire", "dynasty"
+    ]
+}
+
+
+# ---------------------------------------------------------------------------
+# Splitting oversized chunks
 # ---------------------------------------------------------------------------
 
 def _split_for_ollama(chunk: str) -> List[str]:
@@ -405,39 +413,57 @@ def _split_for_ollama(chunk: str) -> List[str]:
     return [part for part in parts if part]
 
 
-def _call_ollama(text_chunk: str) -> List[Dict[str, str]]:
-    """Call Ollama with ONE retry. No naive fallback."""
+# ---------------------------------------------------------------------------
+# LLM extraction
+# ---------------------------------------------------------------------------
+
+def extract_concepts_json(text_chunk: str, domain: str = "biology") -> List[Dict[str, str]]:
+    """
+    Call Ollama to extract 1 main + 2–4 supporting concepts from a text chunk.
+    Returns a flat list of {"concept", "description"} dicts.
+    """
+    if not text_chunk or not text_chunk.strip():
+        return []
+
     prompt = USER_PROMPT_TEMPLATE.format(chunk=text_chunk.strip())
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(domain=domain)
 
-    for attempt in range(2):
-        try:
-            raw_output = generate_with_ollama(
-                prompt=prompt,
-                system=SYSTEM_PROMPT,
-                model=OLLAMA_MODEL_NAME,
-                format="json",
-                options={
-                    "temperature": 0.1,
-                    "num_predict": 700,
-                },
-                timeout=OLLAMA_TIMEOUT_SECONDS,
-            )
-        except Exception as exc:
-            logger.warning("Ollama attempt %d failed: %s", attempt + 1, exc)
-            if attempt == 0:
-                continue
-            return []
+    try:
+        raw_output = generate_with_ollama(
+            prompt=prompt,
+            system=system_prompt,
+            model=OLLAMA_MODEL_NAME,
+            format="json",
+            options={
+                "temperature": 0.15,
+                "num_predict": 800,   # Raised — need room for 5 concepts
+            },
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("Ollama concept extraction failed: %s", exc)
+        return _fallback_extract_concepts_json(text_chunk, domain)
 
-        payload = _parse_raw_concepts(raw_output)
-        if payload:
-            return payload
+    payload = _parse_structured_concepts(raw_output)
+    if len(payload) < MIN_CONCEPTS_PER_CHUNK:
+        # Supplement with fallback if LLM gave too few
+        fallback = _fallback_extract_concepts_json(text_chunk, domain)
+        seen = {c["concept"].lower() for c in payload}
+        for fb in fallback:
+            if fb["concept"].lower() not in seen:
+                payload.append(fb)
+                seen.add(fb["concept"].lower())
+            if len(payload) >= MAX_CONCEPTS_PER_CHUNK:
+                break
 
-        logger.warning("Ollama returned unparseable output (attempt %d)", attempt + 1)
-
-    return []
+    return payload[:MAX_CONCEPTS_PER_CHUNK]
 
 
-def _parse_raw_concepts(raw_output: str) -> List[Dict[str, str]]:
+def _parse_structured_concepts(raw_output: str) -> List[Dict[str, str]]:
+    """
+    Parse the structured {"main_concept": ..., "supporting_concepts": [...]} response.
+    Also handles flat arrays for backward-compatibility.
+    """
     json_fragment = extract_json_fragment(raw_output)
     if not json_fragment:
         return []
@@ -447,50 +473,154 @@ def _parse_raw_concepts(raw_output: str) -> List[Dict[str, str]]:
     except json.JSONDecodeError:
         return []
 
-    if isinstance(data, dict):
-        for key in ("concepts", "items", "data", "results"):
-            if isinstance(data.get(key), list):
-                data = data[key]
-                break
-        else:
-            data = [data] if "concept" in data else []
+    results: List[Dict[str, str]] = []
+    seen: set[str] = set()
 
-    if not isinstance(data, list):
+    def _add(item: Any) -> None:
+        if not isinstance(item, dict):
+            return
+        concept = _spell_correct(str(item.get("concept", "")).strip())
+        description = str(item.get("description", "")).strip()
+        key = concept.lower()
+        if not concept or not description or key in seen:
+            return
+        if not _is_valid_concept(concept):
+            logger.debug("Rejected invalid concept: %r", concept)
+            return
+        seen.add(key)
+        results.append({"concept": concept, "description": description})
+
+    # Structured format: {main_concept, supporting_concepts}
+    if isinstance(data, dict):
+        _add(data.get("main_concept"))
+        for item in data.get("supporting_concepts", []):
+            _add(item)
+        # Fallback: flat dict with concept key
+        if not results and "concept" in data:
+            _add(data)
+        # Fallback: wrapped list
+        if not results:
+            for key in ("concepts", "items", "data", "results"):
+                if isinstance(data.get(key), list):
+                    for item in data[key]:
+                        _add(item)
+                    break
+
+    # Flat array format
+    elif isinstance(data, list):
+        for item in data:
+            _add(item)
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Fallback: regex + vocabulary scan (no LLM required)
+# ---------------------------------------------------------------------------
+
+def _sentence_for_term(text: str, term: str) -> str:
+    sentences = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", text).strip())
+    pattern = re.compile(rf"\b{re.escape(term)}s?\b", re.IGNORECASE)
+    for sentence in sentences:
+        if pattern.search(sentence):
+            return sentence.strip()
+    return sentences[0].strip() if sentences else ""
+
+
+def _make_description(term: str, sentence: str) -> str:
+    clean = sentence.strip()
+    if not clean:
+        return f"{term} is an important biological concept."
+    if len(clean) > 200:
+        clean = clean[:197].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return clean
+
+
+def _title_from_term(term: str) -> str:
+    known_acronyms = {"dna", "rna", "atp"}
+    words = []
+    for word in term.split():
+        words.append(word.upper() if word in known_acronyms else word.capitalize())
+    return " ".join(words)
+
+
+def _fallback_extract_concepts_json(text_chunk: str, domain: str = "biology") -> List[Dict[str, str]]:
+    """
+    Expanded fallback: scans for vocabulary when Ollama fails.
+    Targets up to MAX_CONCEPTS_PER_CHUNK concepts.
+    """
+    text = (text_chunk or "").strip()
+    if not text:
         return []
 
     concepts: List[Dict[str, str]] = []
     seen: set[str] = set()
 
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        concept = str(item.get("concept", "")).strip()
-        description = str(item.get("description", "")).strip()
-        normalized = concept.lower()
-
-        if not concept or not description or normalized in seen:
-            continue
-        if not _is_quality_concept(concept, description):
-            continue
-
+    def add_concept(term: str, sentence: str) -> None:
+        corrected = _spell_correct(term)
+        normalized = corrected.lower().strip()
+        if not normalized or normalized in seen:
+            return
+        if not _is_valid_concept(corrected):
+            return
         seen.add(normalized)
-        concepts.append({"concept": concept, "description": description})
+        concepts.append({
+            "concept": _title_from_term(normalized),
+            "description": _make_description(_title_from_term(normalized), sentence),
+        })
 
-    return concepts
+    # Normalize domain to match dict keys
+    dom_key = "biology"
+    domain_lower = domain.lower()
+    for key in _VISUAL_TERMS_BY_DOMAIN:
+        if key in domain_lower:
+            dom_key = key
+            break
+
+    vocab = _VISUAL_TERMS_BY_DOMAIN.get(dom_key, _VISUAL_TERMS_BY_DOMAIN["biology"])
+
+    # Scan vocabulary longest-first to prefer multi-word matches
+    for term in sorted(vocab, key=len, reverse=True):
+        if len(concepts) >= MAX_CONCEPTS_PER_CHUNK:
+            break
+        if re.search(rf"\b{re.escape(term)}s?\b", text, flags=re.IGNORECASE):
+            add_concept(term, _sentence_for_term(text, term))
+
+    # Regex for definition-style sentences: "X is a ..." or "X are ..."
+    definition_patterns = (
+        r"\b([A-Z][A-Za-z][A-Za-z\s\-]{2,40})\s+(?:is|are|refers to|means)\s+([^.!?]{20,200})",
+        r"\b(?:types? of|structure of|function of|forms? of)\s+([A-Za-z][A-Za-z\s\-]{2,40})",
+        r"\b([A-Z][A-Za-z]{3,}(?:\s+[A-Za-z]{3,}){0,3})\s*[-–]\s*([^.!?]{15,150})",
+    )
+    for pattern in definition_patterns:
+        if len(concepts) >= MAX_CONCEPTS_PER_CHUNK:
+            break
+        for match in re.finditer(pattern, text):
+            if len(concepts) >= MAX_CONCEPTS_PER_CHUNK:
+                break
+            term = re.sub(r"\s+", " ", match.group(1)).strip(" -,:;")
+            words = [w for w in term.split() if w.lower() not in _STOP_WORDS]
+            if not (1 <= len(words) <= 5):
+                continue
+            add_concept(" ".join(words), _sentence_for_term(text, term))
+
+    if concepts:
+        logger.info("Fallback concept extraction produced %d concept(s)", len(concepts))
+    return concepts[:MAX_CONCEPTS_PER_CHUNK]
 
 
 # ---------------------------------------------------------------------------
-# Pipeline concept shape
+# Pipeline shape conversion
 # ---------------------------------------------------------------------------
 
 def _infer_type(concept: str, description: str) -> str:
     haystack = f"{concept} {description}".lower()
-    if any(t in haystack for t in ("process", "cycle", "division", "reaction", "flow", "formation", "reflex", "transmission", "transport")):
+    if any(t in haystack for t in ("process", "cycle", "division", "reaction",
+                                    "flow", "formation", "synthesis", "transport")):
         return "process"
-    if any(t in haystack for t in ("system", "structure", "layer", "membrane", "network", "tract", "capsule", "tubule", "fibre", "fiber")):
+    if any(t in haystack for t in ("system", "structure", "layer", "membrane",
+                                    "organ", "network", "junction", "matrix")):
         return "structure"
-    if any(t in haystack for t in ("type", "class", "category", "classification")):
-        return "classification"
     if any(t in haystack for t in ("diagram", "model", "map", "chart")):
         return "diagram"
     return "object"
@@ -510,10 +640,12 @@ def _build_keywords(concept: str, description: str) -> List[str]:
     return ordered[:5]
 
 
-def _to_pipeline_concept(item: Dict[str, str], relevance: float = 0.0, freq: int = 0) -> Optional[Dict[str, Any]]:
-    concept = item.get("concept", "").strip()
+def _to_pipeline_concept(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
+    concept = _spell_correct(item.get("concept", "").strip())
     description = item.get("description", "").strip()
     if not concept or not description:
+        return None
+    if not _is_valid_concept(concept):
         return None
     return {
         "id": str(uuid.uuid4()),
@@ -525,22 +657,27 @@ def _to_pipeline_concept(item: Dict[str, str], relevance: float = 0.0, freq: int
     }
 
 
+def _extract_from_chunk(chunk: str, domain: str = "biology") -> List[Dict[str, Any]]:
+    extracted = extract_concepts_json(chunk, domain)
+    results: List[Dict[str, Any]] = []
+    for item in extracted[:MAX_CONCEPTS_PER_CHUNK]:
+        concept = _to_pipeline_concept(item)
+        if concept is not None:
+            results.append(concept)
+    return results
+
+
 # ---------------------------------------------------------------------------
-# Main extraction pipeline
+# Public API
 # ---------------------------------------------------------------------------
 
-def extract_concepts(chunks: List[str]) -> List[Dict[str, Any]]:
+def extract_concepts(chunks: List[str], domain: str = "biology") -> List[Dict[str, Any]]:
     """
-    Balanced high-quality concept extraction.
+    Extract visualizable concepts from a list of text chunks.
 
-    Pipeline:
-        1. Frequency scan → identify core terms from full document
-        2. Section detection → understand document structure
-        3. LLM extraction per chunk → domain-specific concepts
-        4. Merge core terms + LLM results (deduplicated)
-        5. Relevance scoring against full document
-        6. Balance: ensure mix of core / structural / advanced
-        7. Guarantee: min 10 concepts (if document has enough content)
+    Targets TARGET_CONCEPTS_PER_DOC concepts across all chunks.
+    Each chunk yields 2–5 concepts (1 main + supporting).
+    Deduplication is applied across chunks.
     """
     if not chunks:
         logger.warning("extract_concepts called with empty chunk list")
@@ -563,82 +700,16 @@ def extract_concepts(chunks: List[str]) -> List[Dict[str, Any]]:
 
     for idx, chunk in enumerate(normalized_chunks):
         logger.info(
-            "Processing chunk %d/%d with Ollama (%d chars)",
-            idx + 1, len(normalized_chunks), len(chunk),
+            "Processing concept chunk %d/%d with local Ollama (%d chars) for domain '%s'",
+            idx + 1,
+            len(normalized_chunks),
+            len(chunk),
+            domain
         )
-        extracted = _call_ollama(chunk)
-        for item in extracted[:MAX_CONCEPTS_PER_CHUNK]:
-            title_key = item["concept"].strip().lower()
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
-                llm_concepts.append(item)
 
-    logger.info("LLM extracted %d unique concept(s)", len(llm_concepts))
-
-    # ── Step 3: Merge core terms + LLM results ─────────────────────────
-    # Core terms get priority, then LLM concepts fill in
-    merged: List[Dict[str, str]] = []
-    merged_keys: set[str] = set()
-
-    # Add core terms first
-    for ct in core_terms:
-        key = ct["concept"].lower()
-        if key not in merged_keys:
-            merged_keys.add(key)
-            merged.append(ct)
-
-    # Add LLM concepts
-    for lc in llm_concepts:
-        key = lc["concept"].lower()
-        if key not in merged_keys:
-            merged_keys.add(key)
-            merged.append(lc)
-
-    logger.info("Merged: %d total unique concepts (core=%d, llm=%d)",
-                len(merged), len(core_terms), len(llm_concepts))
-
-    if not merged:
-        return []
-
-    # ── Step 4: Relevance scoring ───────────────────────────────────────
-    scored: List[Dict[str, Any]] = []
-
-    for item in merged:
-        concept_text = f"{item['concept']}. {item.get('description', '')}"
-        relevance = _compute_relevance(concept_text, full_text)
-        freq = item.get("frequency", 0)
-
-        # Core terms (high frequency) get a relevance floor — never filtered out
-        if freq >= 3:
-            relevance = max(relevance, RELEVANCE_THRESHOLD + 0.05)
-
-        if relevance < RELEVANCE_THRESHOLD:
-            logger.debug("Filtered: '%s' (relevance=%.3f)", item['concept'], relevance)
-            continue
-
-        # Frequency boost
-        freq_boost = min(freq * 0.015, 0.10) if freq else 0
-        final_score = relevance + freq_boost
-
-        pipeline_concept = _to_pipeline_concept(item, relevance, freq)
-        if pipeline_concept is None:
-            continue
-
-        pipeline_concept["relevance_score"] = round(final_score, 3)
-        pipeline_concept["term_frequency"] = freq
-        scored.append(pipeline_concept)
-
-    # ── Step 5: Sort and balance ────────────────────────────────────────
-    scored.sort(key=lambda c: c.get("relevance_score", 0), reverse=True)
-
-    # Ensure we have at least MIN_CONCEPTS_TOTAL if possible
-    if len(scored) < MIN_CONCEPTS_TOTAL and len(merged) > len(scored):
-        # Relax threshold and add more
-        for item in merged:
-            if len(scored) >= MIN_CONCEPTS_TOTAL:
-                break
-            key = item["concept"].lower()
-            if any(c["title"].lower() == key for c in scored):
+        for concept in _extract_from_chunk(chunk, domain):
+            title_key = concept.get("title", "").strip().lower()
+            if not title_key or title_key in seen_titles:
                 continue
             concept_text = f"{item['concept']}. {item.get('description', '')}"
             relevance = _compute_relevance(concept_text, full_text)
@@ -654,9 +725,10 @@ def extract_concepts(chunks: List[str]) -> List[Dict[str, Any]]:
     scored = scored[:MAX_CONCEPTS_TOTAL]
 
     logger.info(
-        "Concept extraction complete: %d concept(s) from %d chunks "
-        "(core_scanned=%d, llm_extracted=%d)",
-        len(scored), len(chunks), len(core_terms), len(llm_concepts)
+        "Concept extraction complete: %d concept(s) from %d original chunks (target %d)",
+        len(all_concepts),
+        len(chunks),
+        TARGET_CONCEPTS_PER_DOC,
     )
 
     return scored
