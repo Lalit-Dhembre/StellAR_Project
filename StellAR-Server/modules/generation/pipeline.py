@@ -3,6 +3,7 @@ import requests
 import uuid
 import io
 import time
+import json
 from PIL import Image
 from flask import current_app
 from modules.rag.image_retriever import retrieve_images
@@ -84,20 +85,69 @@ def generate_model_from_image(image_path: str, entity: str, app_context) -> str:
 
 def generate_model_from_text(entity: str, app_context) -> str:
     """
-    Call Hunyuan using text prompt only as fallback.
+    Call Hunyuan using text prompt via local SD1.5 text-to-image → Hunyuan3D image-to-3D pipeline.
     """
-    prompt = f"Generate a simplified educational 3D model of {entity} suitable for AR learning."
-    print(f"[Generation - Text] Prompt context: {prompt}")
+    import shutil
+
+    prompt = f"A detailed high quality 3D render of {entity}, clean background, centered, single object, studio lighting"
+    print(f"[Generation - Text] Prompt: {prompt}")
     
     start_time = time.time()
     try:
-        # Assuming the backend comfy wrapper will be extended or text workflow exists. 
-        # If the workflow currently doesn't support text, this will act as placeholder logic.
-        print("[Generation - Text] Warning: Text-only pipeline currently not fully mapped in ComfyUI, falling back to basic execution if supported.")
-        # We would invoke ComfyUI text workflow here.
-        # Since we don't have text workflow mapped in execute_model_generation, we raise an exception for now
-        # OR we can just simulate it. Let's raise NotImplementedError if text-only isn't properly wired yet.
-        raise NotImplementedError("Text-to-3D workflow not found in current ComfyUI config")
+        comfy = app_context.comfy_client
+        if not comfy:
+            raise RuntimeError("ComfyUI client not initialized")
+
+        # Load the text-to-3D workflow
+        wf_path = os.path.join('workflows', 'hunyuan_text_to_3d_local_api.json')
+        if not os.path.exists(wf_path):
+            raise FileNotFoundError(f"Text-to-3D workflow not found: {wf_path}")
+
+        with open(wf_path, 'r') as f:
+            workflow = json.load(f)
+
+        # Inject the user's text prompt into the positive prompt node
+        for node in workflow.values():
+            ct = node.get('class_type', '')
+            meta_title = node.get('_meta', {}).get('title', '')
+            if ct == 'CLIPTextEncode' and 'Positive' in meta_title:
+                node['inputs']['text'] = prompt
+
+        # Set unique filename prefix
+        job_id = uuid.uuid4().hex[:12]
+        target_prefix = f"text3d_{job_id}"
+        for node in workflow.values():
+            if 'filename_prefix' in node.get('inputs', {}):
+                node['inputs']['filename_prefix'] = target_prefix
+
+        # Queue the prompt
+        result = comfy.queue_prompt(workflow)
+        if not result:
+            raise RuntimeError("Failed to queue text-to-3D prompt in ComfyUI")
+
+        print(f"[Generation - Text] Prompt queued (prefix={target_prefix})")
+
+        # Wait for the output GLB
+        comfy_output_dir = app_context.config.get('COMFYUI_OUTPUT_DIR',
+                                                   'D:/Coding/ComfyUI_windows_portable/ComfyUI/output/')
+        import glob as glob_mod
+        search_pattern = os.path.join(comfy_output_dir, f"{target_prefix}*.glb")
+        final_glb = comfy.wait_for_completion(search_pattern)
+
+        if not final_glb:
+            raise RuntimeError(f"Text-to-3D generation timed out for '{entity}'")
+
+        # Move to generated_models/
+        gen_dir = app_context.config.get('GENERATED_DIR', 'generated_models')
+        os.makedirs(gen_dir, exist_ok=True)
+        filename = os.path.basename(final_glb)
+        dest_path = os.path.join(gen_dir, filename)
+        shutil.move(final_glb, dest_path)
+
+        print(f"[Generation - Text] Completed in {time.time() - start_time:.2f}s -> {dest_path}")
+        return dest_path
+
     except Exception as e:
         print(f"[Generation - Text] Failed after {time.time() - start_time:.2f}s: {e}")
         raise e
+

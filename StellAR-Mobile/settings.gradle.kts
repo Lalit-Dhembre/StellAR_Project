@@ -30,7 +30,7 @@ dependencyResolutionManagement {
 rootProject.name = "StellAR"
 include(":app")
 
-include(":chemLab")
+//include(":chemLab")
 include(":physicsLab")
 include(":unityLibrary:xrmanifest.androidlib")
 // project(":chemLab").projectDir = File("L:\\Unity\\Chemistry Lab Android\\unityLibrary")

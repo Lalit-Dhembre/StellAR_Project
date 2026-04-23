@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_GENERATE_URL = f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate"
-OLLAMA_MODEL_NAME = os.environ.get("OLLAMA_MODEL_NAME", "phi4-mini-reasoning")
+OLLAMA_MODEL_NAME = os.environ.get("OLLAMA_MODEL_NAME", "qwen3:4b")
 DEFAULT_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "45"))
 
 
@@ -61,11 +61,14 @@ def generate_with_ollama(
     format: Optional[str] = None,
     options: Optional[Dict[str, Any]] = None,
     timeout: Optional[int] = None,
+    think: bool = False,
 ) -> str:
     payload: Dict[str, Any] = {
         "model": model or OLLAMA_MODEL_NAME,
         "prompt": prompt,
         "stream": False,
+        "think": think,
+        "keep_alive": 0,  # Unload model from VRAM immediately (saves ~2.5 GB for Hunyuan)
     }
     if system:
         payload["system"] = system
@@ -81,7 +84,10 @@ def generate_with_ollama(
     )
     response.raise_for_status()
     data = response.json()
-    return (data.get("response") or "").strip()
+    result = (data.get("response") or "").strip()
+    # Strip any residual <think> tags that some reasoning models may emit
+    result = re.sub(r"<think>[\s\S]*?</think>\s*", "", result).strip()
+    return result
 
 
 class _OllamaCompatCompletions:

@@ -49,8 +49,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions {
         freeCompilerArgs = listOf("-XXLanguage:+PropertyParamAnnotationDefaultTargetMode")
@@ -159,12 +159,12 @@ dependencies {
 // OkHttp for HTTP client
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
 
-    implementation(project(":chemLab"))
+    //implementation(project(":chemLab"))
     implementation(project(":physicsLab"))
-    implementation(fileTree(mapOf(
+    /*implementation(fileTree(mapOf(
         "dir" to "${rootProject.project(":chemLab").projectDir}/libs",
         "include" to listOf("*.jar")
-    )))
+    )))*/
     implementation("androidx.games:games-activity:4.0.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

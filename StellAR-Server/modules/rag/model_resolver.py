@@ -179,62 +179,103 @@ def _generate_model_comfyui(title: str, image_url: str) -> Optional[str]:
     Downloads the image, uploads to ComfyUI, runs the workflow,
     and returns the local .glb file path.
     """
+    import shutil
+
+    temp_path = None
     try:
         from modules.generation.comfyui_client import ComfyUIClient
-        from modules.generation.pipeline import validate_image
 
-        # Download the source image
+        # --- 1. Download the source image ---
+        logger.info("Downloading source image for '%s' from %s", title, image_url[:80])
         headers = {
             "User-Agent": "StellAR/1.0 (https://github.com/Lalit-Dhembre/StellAR_Project)"
         }
         img_resp = requests.get(image_url, headers=headers, timeout=15)
         img_resp.raise_for_status()
 
-        # Save to temp file
         temp_dir = os.path.join(os.getcwd(), "temp_uploads")
         os.makedirs(temp_dir, exist_ok=True)
         temp_path = os.path.join(temp_dir, f"gen_input_{uuid.uuid4().hex}.png")
         with open(temp_path, "wb") as f:
             f.write(img_resp.content)
 
-        # Validate image
-        validated_path = validate_image(temp_path)
-        if not validated_path:
-            logger.warning("Image validation failed for '%s'", title)
-            return None
-
-        # Upload to ComfyUI and generate
+        # --- 2. Upload image to ComfyUI ---
         client = ComfyUIClient(comfyui_url=COMFYUI_URL)
-        uploaded_name = client.upload_image(validated_path)
+        uploaded_name = client.upload_image(temp_path)
         if not uploaded_name:
             logger.error("ComfyUI image upload failed for '%s'", title)
             return None
 
-        # TODO: Queue the actual workflow — this depends on the ComfyUI
-        # workflow JSON being configured for image-to-3D generation.
-        # For now, we simulate with a placeholder.
-        logger.info("ComfyUI generation queued for '%s'", title)
+        # --- 3. Load the workflow JSON ---
+        wf_path = os.path.join(os.getcwd(), "workflows", "hunyuan_workflow_api.json")
+        if not os.path.exists(wf_path):
+            wf_path = os.path.join(os.getcwd(), "workflows", "hunyuan_workflow.json")
+        if not os.path.exists(wf_path):
+            logger.error("No Hunyuan workflow JSON found")
+            return None
 
-        # Wait for output
-        output_pattern = os.path.join(
-            COMFYUI_URL.replace("http://127.0.0.1:8188", ""),
-            f"gen_{_slugify(title)}_*.glb",
+        with open(wf_path, "r") as f:
+            workflow = json.load(f)
+
+        # --- 4. Inject the uploaded image filename ---
+        for node in workflow.values():
+            if node.get("class_type") == "LoadImage":
+                node["inputs"]["image"] = uploaded_name
+
+        # --- 5. Set a unique filename_prefix for this job ---
+        job_id = uuid.uuid4().hex[:12]
+        target_prefix = f"rag3d_{job_id}"
+        for node in workflow.values():
+            if "filename_prefix" in node.get("inputs", {}):
+                node["inputs"]["filename_prefix"] = target_prefix
+
+        # --- 6. Queue the prompt ---
+        queue_result = client.queue_prompt(workflow)
+        if not queue_result:
+            logger.error("Failed to queue ComfyUI prompt for '%s'", title)
+            return None
+
+        logger.info(
+            "ComfyUI prompt queued for '%s' (prefix=%s, prompt_id=%s)",
+            title, target_prefix, queue_result.get("prompt_id", "?"),
         )
 
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except OSError:
-            pass
+        # --- 7. Wait for the output GLB file ---
+        comfy_output_dir = os.environ.get(
+            "COMFYUI_OUTPUT_DIR",
+            "D:/Coding/ComfyUI_windows_portable/ComfyUI/output/",
+        )
+        search_pattern = os.path.join(comfy_output_dir, f"{target_prefix}*.glb")
+        final_glb = client.wait_for_completion(search_pattern, timeout=GENERATION_TIMEOUT)
 
-        return None  # ComfyUI integration placeholder
+        if not final_glb:
+            logger.error("ComfyUI generation timed out for '%s'", title)
+            return None
+
+        # --- 8. Move the result to generated_models/ ---
+        Path(MODELS_DIR).mkdir(parents=True, exist_ok=True)
+        output_path = _model_path(title)
+        shutil.move(final_glb, output_path)
+
+        logger.info("ComfyUI model generated for '%s': %s (%d bytes)",
+                     title, output_path, os.path.getsize(output_path))
+        return output_path
 
     except ImportError:
         logger.debug("ComfyUI client not available")
         return None
+    except requests.exceptions.RequestException as exc:
+        logger.error("Image download failed for '%s': %s", title, exc)
+        return None
     except Exception as exc:
         logger.error("ComfyUI generation failed for '%s': %s", title, exc)
         return None
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def _generate_model_simulated(title: str, image_url: str) -> Optional[str]:
