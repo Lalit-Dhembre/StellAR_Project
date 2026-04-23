@@ -30,6 +30,7 @@ import com.cosmic_struck.stellar.common.components.StellarScaffold
 import com.cosmic_struck.stellar.common.components.SimpleTopAppBar
 import com.cosmic_struck.stellar.stellar.models.presentation.components.ARModelSceneView
 import com.cosmic_struck.stellar.stellar.models.presentation.components.BottomSheetControlPanel
+import com.cosmic_struck.stellar.stellar.models.presentation.components.NarratorPanel
 import com.cosmic_struck.stellar.stellar.models.presentation.components.SceneView
 import com.cosmic_struck.stellar.stellar.models.presentation.viewmodel.ModelViewScreenViewModel
 import com.cosmic_struck.stellar.stellar.models.presentation.viewmodel.SceneType
@@ -95,27 +96,43 @@ fun ModelViewerScreen(
             else -> {
                 // 🔽 Bottom Sheet owns the layout
                 BottomSheetScaffold(
-                    sheetPeekHeight = 100.dp,
+                    sheetPeekHeight = if (state.narrationScript.isNotBlank()) 260.dp else 100.dp,
                     sheetContainerColor = Color.Transparent,
                     sheetContent = {
-                        BottomSheetControlPanel(
-                            scene = state.scene,
-                            rotationSpeed = state.rotationSpeed,
-                            onRotationSpeedChange = {
-                                viewModel.onChangeRotationSpeed(it)
-                            },
-                            onToggleScene = {
-                                viewModel.toggleScene()
-                            },
-                            onReset = {
-                                viewModel.resetModel()
+                        Column {
+                            // 🎙 Narrator Panel (above controls when script is available)
+                            if (state.narrationScript.isNotBlank()) {
+                                NarratorPanel(
+                                    script = state.narrationScript,
+                                    isNarrating = state.isNarrating,
+                                    isPaused = state.isPaused,
+                                    progress = state.narrationProgress,
+                                    onPlay = { viewModel.startNarration() },
+                                    onPause = { viewModel.pauseNarration() },
+                                    onResume = { viewModel.resumeNarration() },
+                                    onStop = { viewModel.stopNarration() }
+                                )
                             }
-                        )
+
+                            // 🎛 Existing control panel
+                            BottomSheetControlPanel(
+                                scene = state.scene,
+                                rotationSpeed = state.rotationSpeed,
+                                onRotationSpeedChange = {
+                                    viewModel.onChangeRotationSpeed(it)
+                                },
+                                onToggleScene = {
+                                    viewModel.toggleScene()
+                                },
+                                onReset = {
+                                    viewModel.resetModel()
+                                }
+                            )
+                        }
                     }
                 ) { sheetPadding ->
 
                     // 🎬 Scene Content
-
 
                     Box(
                         modifier = Modifier

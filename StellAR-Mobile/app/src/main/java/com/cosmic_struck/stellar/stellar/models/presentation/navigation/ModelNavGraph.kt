@@ -35,10 +35,15 @@ fun NavGraphBuilder.modelNavGraph(navHostController: NavHostController) {
             )
         }
 
-        composable(route = StellarModelScreen.ModelScreen.route + "/{url}/{name}",
+        composable(route = StellarModelScreen.ModelScreen.route + "/{url}/{name}?script={script}",
             arguments = listOf(
-                navArgument("name",{type = NavType.StringType}),
-                navArgument("url",{type = NavType.StringType})
+                navArgument("name") { type = NavType.StringType },
+                navArgument("url") { type = NavType.StringType },
+                navArgument("script") { 
+                    type = NavType.StringType
+                    defaultValue = ""
+                    nullable = true
+                }
             )){
             ModelViewerScreen(
                 navigateBack = {

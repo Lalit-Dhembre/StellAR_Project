@@ -53,24 +53,23 @@ _audio_cache: Dict[str, Dict[str, Any]] = {}
 SCRIPT_SYSTEM_PROMPT = """\
 You are a friendly teacher explaining a concept to a student.
 
-Rules:
+CRITICAL RULES:
+- Output ONLY the spoken explanation. Nothing else.
+- Do NOT start with "Here is...", "Sure...", "Let me explain...", or any preamble.
+- Do NOT describe what you are about to write. Just write it directly.
 - Write 3 to 5 sentences ONLY.
-- Use a warm, conversational tone.
-- Use simple language a high-school student would understand.
-- Start with an engaging hook like "Let's understand..." or \
-  "Have you ever wondered...".
-- Avoid complex jargon - if you must use a technical term, briefly explain it.
-- Keep the explanation under 100 words.
-- Do NOT use bullet points, lists, or formatting.
-- Write as natural spoken English - this will be read aloud.
-- Output ONLY the script text, nothing else.
+- Use a warm, conversational tone a high-school student would understand.
+- Start directly with an engaging hook about the topic.
+- Keep under 100 words.
+- No bullet points, lists, markdown, or formatting.
+- Write natural spoken English — this will be read aloud by a text-to-speech engine.
 """
 
 SCRIPT_USER_TEMPLATE = """\
 Concept: {title}
 Explanation: {short_explanation}
 
-Write a short, friendly spoken explanation for this concept.
+Write a short spoken explanation about this concept. Start directly with the explanation. /no_think
 """
 
 
@@ -102,6 +101,41 @@ def _normalize_script(script: str) -> str:
     return re.sub(r"\s+", " ", script or "").strip()
 
 
+def _clean_script(script: str) -> str:
+    """
+    Strip LLM meta-commentary, preamble, and prompt echoes from script output.
+    Models like qwen3 often prefix with reasoning or 'Here is the explanation:'.
+    """
+    text = (script or "").strip()
+    if not text:
+        return text
+
+    # Strip <think>...</think> blocks (some models emit even with think=false)
+    text = re.sub(r"<think>[\s\S]*?</think>\s*", "", text).strip()
+
+    # Strip common LLM meta-prefixes (greedy, case-insensitive)
+    meta_patterns = [
+        r"^(?:Here(?:'s| is) (?:a |the )?(?:short |brief )?(?:spoken )?(?:explanation|script|narration)[^.]*[.:]\s*)",
+        r"^(?:Sure[!,.]?\s*(?:Here(?:'s| is)[^.]*[.:])?\s*)",
+        r"^(?:Of course[!,.]?\s*(?:Here(?:'s| is)[^.]*[.:])?\s*)",
+        r"^(?:Let me (?:explain|write|create)[^.]*[.:]\s*)",
+        r"^(?:We are writing[^.]*[.:]\s*)",
+        r"^(?:I(?:'ll| will) (?:write|explain|create)[^.]*[.:]\s*)",
+        r'^(?:Script:\s*)',
+        r'^(?:Explanation:\s*)',
+        r'^(?:Narration:\s*)',
+    ]
+    for pattern in meta_patterns:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
+    # Strip leading/trailing quotes if the model wrapped the whole output
+    if (text.startswith('"') and text.endswith('"')) or \
+       (text.startswith("'") and text.endswith("'")):
+        text = text[1:-1].strip()
+
+    return text
+
+
 def _build_failure_result(script: str, error: str) -> Dict[str, Any]:
     """Return the public error shape required by the audio API."""
     return {
@@ -131,7 +165,7 @@ def generate_script(concept: Dict[str, Any]) -> str:
     )
 
     try:
-        script = generate_with_ollama(
+        raw_script = generate_with_ollama(
             prompt=SCRIPT_USER_TEMPLATE.format(
                 title=title,
                 short_explanation=explanation,
@@ -144,10 +178,10 @@ def generate_script(concept: Dict[str, Any]) -> str:
             },
             timeout=30,
         )
-        script = (script or "").strip()
+        script = _clean_script(raw_script)
 
         if not script or len(script.split()) < 10:
-            logger.warning("LLM returned too-short script, using fallback")
+            logger.warning("LLM returned too-short script after cleaning, using fallback")
             return fallback
 
         words = script.split()
@@ -155,7 +189,8 @@ def generate_script(concept: Dict[str, Any]) -> str:
             script = " ".join(words[:MAX_SCRIPT_WORDS]) + "."
             logger.info("Truncated script to %d words", MAX_SCRIPT_WORDS)
 
-        logger.info("Generated script for '%s' (%d words)", title, len(script.split()))
+        logger.info("Generated script for '%s' (%d words): %s",
+                     title, len(script.split()), script[:80])
         return script
 
     except Exception as exc:

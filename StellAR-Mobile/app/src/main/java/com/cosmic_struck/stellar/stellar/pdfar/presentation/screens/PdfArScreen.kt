@@ -21,7 +21,7 @@ private const val TAG = "PdfArScreen"
 fun PdfArScreen(
     domain: String,
     onNavigateBack: () -> Unit,
-    onModelReady: (String, String) -> Unit,
+    onModelReady: (String, String, String?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PdfArViewModel = hiltViewModel()
 ) {
@@ -57,7 +57,7 @@ fun PdfArScreen(
                 if (state.modelUrl != lastHandledModelUrl) {
                     Log.d(TAG, "Model ready — navigating to AR: url=${state.modelUrl}, name=${state.entityName}")
                     lastHandledModelUrl = state.modelUrl
-                    onModelReady(state.modelUrl, state.entityName)
+                    onModelReady(state.modelUrl, state.entityName, state.script)
                     // Reset back to content list (not Idle)
                     viewModel.resetState()
                 }

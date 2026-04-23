@@ -630,7 +630,7 @@ def _build_keywords(concept: str, description: str) -> List[str]:
     words = re.findall(r"[A-Za-z][A-Za-z\-]+", f"{concept} {description}".lower())
     ordered: List[str] = []
     for word in words:
-        if len(word) < 3 or word in _BLOCKED_SINGLE_WORDS or word in ordered:
+        if len(word) < 3 or word in _STOP_WORDS or word in ordered:
             continue
         ordered.append(word)
         if len(ordered) == 5:
@@ -651,7 +651,7 @@ def _to_pipeline_concept(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
         "id": str(uuid.uuid4()),
         "title": concept,
         "type": _infer_type(concept, description),
-        "confidence": min(0.95, 0.60 + relevance * 0.3 + min(freq * 0.01, 0.05)),
+        "confidence": 0.85,
         "keywords": _build_keywords(concept, description),
         "short_explanation": description,
     }
@@ -683,19 +683,12 @@ def extract_concepts(chunks: List[str], domain: str = "biology") -> List[Dict[st
         logger.warning("extract_concepts called with empty chunk list")
         return []
 
-    full_text = "\n".join(chunks)
-
-    # ── Step 1: Frequency-based core term scan ──────────────────────────
-    logger.info("Scanning document for high-frequency core terms...")
-    core_terms = _scan_core_terms(full_text)
-    logger.info("Found %d core term candidate(s) via frequency analysis", len(core_terms))
-
-    # ── Step 2: LLM extraction per chunk ────────────────────────────────
+    # ── LLM extraction per chunk ────────────────────────────────────
     normalized_chunks: List[str] = []
     for chunk in chunks:
         normalized_chunks.extend(_split_for_ollama(chunk))
 
-    llm_concepts: List[Dict[str, str]] = []
+    all_concepts: List[Dict[str, Any]] = []
     seen_titles: set[str] = set()
 
     for idx, chunk in enumerate(normalized_chunks):
@@ -711,18 +704,8 @@ def extract_concepts(chunks: List[str], domain: str = "biology") -> List[Dict[st
             title_key = concept.get("title", "").strip().lower()
             if not title_key or title_key in seen_titles:
                 continue
-            concept_text = f"{item['concept']}. {item.get('description', '')}"
-            relevance = _compute_relevance(concept_text, full_text)
-            # Use a relaxed threshold for the minimum guarantee
-            if relevance >= RELEVANCE_THRESHOLD - 0.10:
-                pc = _to_pipeline_concept(item, relevance, item.get("frequency", 0))
-                if pc:
-                    pc["relevance_score"] = round(relevance, 3)
-                    pc["term_frequency"] = item.get("frequency", 0)
-                    scored.append(pc)
-
-    # Cap at MAX
-    scored = scored[:MAX_CONCEPTS_TOTAL]
+            seen_titles.add(title_key)
+            all_concepts.append(concept)
 
     logger.info(
         "Concept extraction complete: %d concept(s) from %d original chunks (target %d)",
@@ -731,4 +714,4 @@ def extract_concepts(chunks: List[str], domain: str = "biology") -> List[Dict[st
         TARGET_CONCEPTS_PER_DOC,
     )
 
-    return scored
+    return all_concepts

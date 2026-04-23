@@ -24,7 +24,12 @@ data class ModelViewScreenState(
     val modelError: String = "",
     val modelURL: String = "",
     val modelPath: String = "",
-    val scene: SceneType = SceneType.SceneView
+    val scene: SceneType = SceneType.SceneView,
+    // Narration state
+    val narrationScript: String = "",
+    val isNarrating: Boolean = false,
+    val isPaused: Boolean = false,
+    val narrationProgress: Float = 0f  // 0.0 to 1.0
 )
 
 enum class ListType {

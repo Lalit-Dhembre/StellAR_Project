@@ -23,7 +23,7 @@ sealed class PdfArNavigationScreens(
 
 fun NavGraphBuilder.pdfArNavigation(
     navHostController: NavHostController,
-    onNavigateToARViewer: (String, String) -> Unit
+    onNavigateToARViewer: (String, String, String?) -> Unit
 ) {
     composable(
         route = PdfArNavigationScreens.PdfArMainScreen.route,
@@ -35,8 +35,8 @@ fun NavGraphBuilder.pdfArNavigation(
             onNavigateBack = {
                 navHostController.popBackStack()
             },
-            onModelReady = { url, name ->
-                onNavigateToARViewer(url, name)
+            onModelReady = { url, name, script ->
+                onNavigateToARViewer(url, name, script)
             }
         )
     }

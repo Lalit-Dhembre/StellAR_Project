@@ -121,9 +121,10 @@ fun MainNavGraph(
             
             pdfArNavigation(
                 navHostController = navHostController,
-                onNavigateToARViewer = { url, name ->
+                onNavigateToARViewer = { url, name, script ->
                     val encodedUrl = android.net.Uri.encode(url)
-                    navHostController.navigate(com.cosmic_struck.stellar.stellar.models.presentation.navigation.StellarModelScreen.ModelScreen.route + "/$encodedUrl/$name")
+                    val encodedScript = android.net.Uri.encode(script ?: "")
+                    navHostController.navigate(com.cosmic_struck.stellar.stellar.models.presentation.navigation.StellarModelScreen.ModelScreen.route + "/$encodedUrl/$name?script=$encodedScript")
                 }
             )
 
