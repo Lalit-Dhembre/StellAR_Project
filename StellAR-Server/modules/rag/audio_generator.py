@@ -30,7 +30,7 @@ from gtts import gTTS
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-from modules.local_llm import OLLAMA_MODEL_NAME, generate_with_ollama
+from modules.local_llm import OLLAMA_MODEL_NAME, extract_json_fragment, generate_with_ollama
 
 # Audio file storage
 AUDIO_DIR = os.path.join(os.getcwd(), "generated_audio")
@@ -38,6 +38,8 @@ SUPABASE_AUDIO_BUCKET = "audio"
 
 MAX_SCRIPT_WORDS = 100
 MAX_TTS_CHARACTERS = 2000
+MAX_CHUNK_CONTEXT_CHARACTERS = 1400
+BATCH_SCRIPT_TIMEOUT_SECONDS = int(os.environ.get("RAG_BATCH_SCRIPT_TIMEOUT_SECONDS", "60"))
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +70,44 @@ CRITICAL RULES:
 SCRIPT_USER_TEMPLATE = """\
 Concept: {title}
 Explanation: {short_explanation}
+Relevant source chunk:
+\"\"\"
+{source_chunk}
+\"\"\"
 
 Write a short spoken explanation about this concept. Start directly with the explanation. /no_think
+"""
+
+BATCH_SCRIPT_SYSTEM_PROMPT = """\
+You are a friendly teacher creating short spoken explanations for an educational AR app.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "scripts": [
+    {"id": "concept-id", "script": "3 to 5 sentence spoken explanation"},
+    {"id": "concept-id-2", "script": "3 to 5 sentence spoken explanation"}
+  ]
+}
+
+CRITICAL RULES:
+- Output one script for every provided concept id.
+- Output ONLY JSON. No markdown, notes, or extra text.
+- Each script must be 3 to 5 sentences and under 100 words.
+- Write natural spoken English for text-to-speech.
+- Start directly with the explanation, not with preambles like "Here is".
+- Ground each script in the source chunk and the concept explanation.
+"""
+
+BATCH_SCRIPT_USER_TEMPLATE = """\
+Source chunk:
+\"\"\"
+{source_chunk}
+\"\"\"
+
+Generate narration scripts for these concepts:
+{concepts_json}
+
+Return JSON only.
 """
 
 
@@ -136,6 +174,43 @@ def _clean_script(script: str) -> str:
     return text
 
 
+def _trim_chunk_context(text: str) -> str:
+    """Trim chunk context to keep prompts focused and bounded."""
+    normalized = re.sub(r"\s+", " ", text or "").strip()
+    if len(normalized) <= MAX_CHUNK_CONTEXT_CHARACTERS:
+        return normalized
+    trimmed = normalized[:MAX_CHUNK_CONTEXT_CHARACTERS].rsplit(" ", 1)[0].rstrip(",;:")
+    return (trimmed or normalized[:MAX_CHUNK_CONTEXT_CHARACTERS]).strip() + "..."
+
+
+def _finalize_script(script: str) -> str:
+    """Clean and cap a script before returning it to the pipeline."""
+    cleaned = _clean_script(script)
+    if not cleaned:
+        return ""
+
+    words = cleaned.split()
+    if len(words) > MAX_SCRIPT_WORDS + 20:
+        cleaned = " ".join(words[:MAX_SCRIPT_WORDS]).rstrip(".") + "."
+        logger.info("Truncated script to %d words", MAX_SCRIPT_WORDS)
+
+    return cleaned.strip()
+
+
+def _build_fallback_script(title: str, explanation: str, source_chunk: str = "") -> str:
+    """Create a deterministic spoken fallback when LLM generation fails."""
+    supporting_text = explanation.strip() or _trim_chunk_context(source_chunk)
+    if not supporting_text:
+        supporting_text = f"{title} is an important concept worth exploring further."
+
+    fallback = (
+        f"Let's understand {title}. "
+        f"{supporting_text} "
+        f"This is an important concept worth exploring further."
+    )
+    return _finalize_script(fallback) or fallback.strip()
+
+
 def _build_failure_result(script: str, error: str) -> Dict[str, Any]:
     """Return the public error shape required by the audio API."""
     return {
@@ -157,18 +232,15 @@ def generate_script(concept: Dict[str, Any]) -> str:
     """
     title = concept.get("title", "").strip()
     explanation = concept.get("short_explanation", "").strip()
-
-    fallback = (
-        f"Let's understand {title}. "
-        f"{explanation} "
-        f"This is an important concept worth exploring further."
-    )
+    source_chunk = _trim_chunk_context(concept.get("source_chunk", ""))
+    fallback = _build_fallback_script(title, explanation, source_chunk)
 
     try:
         raw_script = generate_with_ollama(
             prompt=SCRIPT_USER_TEMPLATE.format(
                 title=title,
                 short_explanation=explanation,
+                source_chunk=source_chunk or "No additional chunk context provided.",
             ),
             system=SCRIPT_SYSTEM_PROMPT,
             model=OLLAMA_MODEL_NAME,
@@ -178,16 +250,11 @@ def generate_script(concept: Dict[str, Any]) -> str:
             },
             timeout=30,
         )
-        script = _clean_script(raw_script)
+        script = _finalize_script(raw_script)
 
         if not script or len(script.split()) < 10:
             logger.warning("LLM returned too-short script after cleaning, using fallback")
             return fallback
-
-        words = script.split()
-        if len(words) > MAX_SCRIPT_WORDS + 20:
-            script = " ".join(words[:MAX_SCRIPT_WORDS]) + "."
-            logger.info("Truncated script to %d words", MAX_SCRIPT_WORDS)
 
         logger.info("Generated script for '%s' (%d words): %s",
                      title, len(script.split()), script[:80])
@@ -196,6 +263,120 @@ def generate_script(concept: Dict[str, Any]) -> str:
     except Exception as exc:
         logger.error("Script generation failed for '%s': %s", title, exc)
         return fallback
+
+
+def _parse_script_batch_response(raw_output: str) -> Dict[str, str]:
+    """Parse a JSON batch of concept scripts into an id->script map."""
+    json_fragment = extract_json_fragment(raw_output)
+    if not json_fragment:
+        return {}
+
+    try:
+        data = json.loads(json_fragment)
+    except json.JSONDecodeError:
+        return {}
+
+    parsed: Dict[str, str] = {}
+
+    def _store(concept_id: Any, script: Any) -> None:
+        key = str(concept_id or "").strip()
+        if not key or not isinstance(script, str):
+            return
+        finalized = _finalize_script(script)
+        if finalized:
+            parsed[key] = finalized
+
+    if isinstance(data, dict):
+        scripts = data.get("scripts")
+        if isinstance(scripts, list):
+            for item in scripts:
+                if not isinstance(item, dict):
+                    continue
+                _store(item.get("id"), item.get("script"))
+        else:
+            for concept_id, script in data.items():
+                if isinstance(script, dict):
+                    _store(concept_id, script.get("script"))
+                else:
+                    _store(concept_id, script)
+    elif isinstance(data, list):
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            _store(item.get("id"), item.get("script"))
+
+    return parsed
+
+
+def generate_scripts_for_chunk(
+    concepts: List[Dict[str, Any]],
+    chunk_text: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    Generate narration scripts for a chunk's concepts in one LLM call.
+
+    Falls back to deterministic per-concept scripts if the batch call fails.
+    """
+    if not concepts:
+        return {}
+
+    chunk_context = _trim_chunk_context(
+        chunk_text or next((concept.get("source_chunk", "") for concept in concepts if concept.get("source_chunk")), "")
+    )
+
+    concept_payload = []
+    fallback_scripts: Dict[str, str] = {}
+
+    for concept in concepts:
+        concept_id = str(concept.get("id", "")).strip()
+        title = concept.get("title", "").strip()
+        explanation = concept.get("short_explanation", "").strip()
+        if not concept_id or not title:
+            continue
+
+        concept_payload.append({
+            "id": concept_id,
+            "title": title,
+            "short_explanation": explanation,
+        })
+        fallback_scripts[concept_id] = _build_fallback_script(title, explanation, chunk_context)
+
+    if not concept_payload:
+        return {}
+
+    try:
+        raw_output = generate_with_ollama(
+            prompt=BATCH_SCRIPT_USER_TEMPLATE.format(
+                source_chunk=chunk_context or "No additional chunk context provided.",
+                concepts_json=json.dumps(concept_payload, ensure_ascii=True, indent=2),
+            ),
+            system=BATCH_SCRIPT_SYSTEM_PROMPT,
+            model=OLLAMA_MODEL_NAME,
+            format="json",
+            options={
+                "temperature": 0.25,
+                "num_predict": max(400, len(concept_payload) * 220),
+            },
+            timeout=max(BATCH_SCRIPT_TIMEOUT_SECONDS, 20 + len(concept_payload) * 8),
+        )
+        parsed_scripts = _parse_script_batch_response(raw_output)
+    except Exception as exc:
+        logger.error("Chunk script batch generation failed: %s", exc)
+        parsed_scripts = {}
+
+    results: Dict[str, str] = {}
+    for concept in concept_payload:
+        concept_id = concept["id"]
+        candidate = parsed_scripts.get(concept_id, "")
+        if not candidate or len(candidate.split()) < 10:
+            logger.warning(
+                "Using fallback script for concept '%s' after chunk batch generation",
+                concept.get("title", concept_id),
+            )
+            candidate = fallback_scripts[concept_id]
+        results[concept_id] = candidate
+
+    return results
 
 
 # ---------------------------------------------------------------------------

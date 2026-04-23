@@ -64,7 +64,7 @@ class PdfArViewModel @Inject constructor(
         }
     }
 
-    fun fetchConceptDetails(conceptId: String, entityName: String) {
+    fun fetchConceptDetails(conceptId: String, entityName: String, preloadedScript: String? = null) {
         Log.d(TAG, "fetchConceptDetails() called: id=$conceptId, entity=$entityName")
         viewModelScope.launch {
             setState(PdfArUiState.GeneratingModel, "Fetching concept details for '$entityName'")
@@ -81,14 +81,14 @@ class PdfArViewModel @Inject constructor(
                                 PdfArUiState.ModelReady(
                                     modelUrl = response.modelUrl,
                                     entityName = response.title,
-                                    script = response.script
+                                    script = response.script ?: preloadedScript
                                 ),
                                 "Model ready for '${response.title}'"
                             )
                         }
                         response.modelStatus == "generating" || response.modelStatus == "processing" -> {
                             Log.d(TAG, "Model generating — starting poll for '$entityName'")
-                            pollConceptModel(conceptId, entityName)
+                            pollConceptModel(conceptId, entityName, preloadedScript)
                         }
                         response.modelStatus == "not_available" -> {
                             setState(
@@ -130,7 +130,7 @@ class PdfArViewModel @Inject constructor(
         }
     }
 
-    private fun pollConceptModel(conceptId: String, entityName: String) {
+    private fun pollConceptModel(conceptId: String, entityName: String, preloadedScript: String? = null) {
         viewModelScope.launch {
             var attempts = 0
             val maxAttempts = 120
@@ -151,7 +151,7 @@ class PdfArViewModel @Inject constructor(
                                         PdfArUiState.ModelReady(
                                             modelUrl = response.modelUrl,
                                             entityName = response.title,
-                                            script = response.script
+                                            script = response.script ?: preloadedScript
                                         ),
                                         "Poll: model ready after $attempts attempts"
                                     )

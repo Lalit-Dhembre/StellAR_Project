@@ -16,6 +16,7 @@ data class Concept(
     val title: String,
     @SerializedName("image_url") val imageUrl: String?,
     @SerializedName("image_caption") val imageCaption: String?,
+    val script: String?,
     val score: Float?,
     val source: String?
 )

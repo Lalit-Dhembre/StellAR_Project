@@ -114,9 +114,13 @@ fun PdfArScreen(
                     SectionListScreen(
                         concepts = state.concepts,
                         nativeImages = state.nativeImages,
-                        onConceptClick = { conceptId, entityName ->
-                            Log.d(TAG, "Concept clicked: id=$conceptId, name=$entityName")
-                            viewModel.fetchConceptDetails(conceptId, entityName)
+                        onConceptClick = { concept ->
+                            Log.d(TAG, "Concept clicked: id=${concept.id}, name=${concept.title}")
+                            viewModel.fetchConceptDetails(
+                                conceptId = concept.id,
+                                entityName = concept.title,
+                                preloadedScript = concept.script
+                            )
                         },
                         onNativeImageClick = { imageUrl, entityName ->
                             Log.d(TAG, "Native image clicked: name=$entityName")

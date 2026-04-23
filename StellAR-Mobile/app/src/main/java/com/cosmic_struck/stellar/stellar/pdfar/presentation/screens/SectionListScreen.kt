@@ -31,7 +31,7 @@ import com.cosmic_struck.stellar.stellar.pdfar.data.models.NativeImage
 fun SectionListScreen(
     concepts: List<Concept>,
     nativeImages: List<NativeImage>,
-    onConceptClick: (String, String) -> Unit,
+    onConceptClick: (Concept) -> Unit,
     onNativeImageClick: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -104,7 +104,7 @@ fun SectionListScreen(
                         items(concepts) { concept ->
                             ConceptCard(
                                 concept = concept,
-                                onClick = { onConceptClick(concept.id, concept.title) }
+                                onClick = { onConceptClick(concept) }
                             )
                         }
                     }

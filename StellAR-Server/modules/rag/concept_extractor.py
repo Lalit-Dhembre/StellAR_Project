@@ -640,14 +640,19 @@ def _build_keywords(concept: str, description: str) -> List[str]:
     return ordered[:5]
 
 
-def _to_pipeline_concept(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
+def _to_pipeline_concept(
+    item: Dict[str, str],
+    *,
+    source_chunk: Optional[str] = None,
+    source_chunk_index: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
     concept = _spell_correct(item.get("concept", "").strip())
     description = item.get("description", "").strip()
     if not concept or not description:
         return None
     if not _is_valid_concept(concept):
         return None
-    return {
+    pipeline_concept = {
         "id": str(uuid.uuid4()),
         "title": concept,
         "type": _infer_type(concept, description),
@@ -655,13 +660,27 @@ def _to_pipeline_concept(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
         "keywords": _build_keywords(concept, description),
         "short_explanation": description,
     }
+    if source_chunk:
+        pipeline_concept["source_chunk"] = source_chunk
+    if source_chunk_index is not None:
+        pipeline_concept["source_chunk_index"] = source_chunk_index
+    return pipeline_concept
 
 
-def _extract_from_chunk(chunk: str, domain: str = "biology") -> List[Dict[str, Any]]:
+def _extract_from_chunk(
+    chunk: str,
+    domain: str = "biology",
+    *,
+    source_chunk_index: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     extracted = extract_concepts_json(chunk, domain)
     results: List[Dict[str, Any]] = []
     for item in extracted[:MAX_CONCEPTS_PER_CHUNK]:
-        concept = _to_pipeline_concept(item)
+        concept = _to_pipeline_concept(
+            item,
+            source_chunk=chunk,
+            source_chunk_index=source_chunk_index,
+        )
         if concept is not None:
             results.append(concept)
     return results
@@ -684,14 +703,17 @@ def extract_concepts(chunks: List[str], domain: str = "biology") -> List[Dict[st
         return []
 
     # ── LLM extraction per chunk ────────────────────────────────────
-    normalized_chunks: List[str] = []
+    normalized_chunks: List[Tuple[int, str]] = []
+    normalized_chunk_index = 0
     for chunk in chunks:
-        normalized_chunks.extend(_split_for_ollama(chunk))
+        for normalized_chunk in _split_for_ollama(chunk):
+            normalized_chunks.append((normalized_chunk_index, normalized_chunk))
+            normalized_chunk_index += 1
 
     all_concepts: List[Dict[str, Any]] = []
     seen_titles: set[str] = set()
 
-    for idx, chunk in enumerate(normalized_chunks):
+    for idx, (source_chunk_index, chunk) in enumerate(normalized_chunks):
         logger.info(
             "Processing concept chunk %d/%d with local Ollama (%d chars) for domain '%s'",
             idx + 1,
@@ -700,7 +722,11 @@ def extract_concepts(chunks: List[str], domain: str = "biology") -> List[Dict[st
             domain
         )
 
-        for concept in _extract_from_chunk(chunk, domain):
+        for concept in _extract_from_chunk(
+            chunk,
+            domain,
+            source_chunk_index=source_chunk_index,
+        ):
             title_key = concept.get("title", "").strip().lower()
             if not title_key or title_key in seen_titles:
                 continue

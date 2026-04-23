@@ -3,13 +3,13 @@ import os
 import uuid
 import json
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from modules.api.ocr import extract_text_from_file
 from modules.rag.text_chunker import chunk_text
 from modules.rag.concept_extractor import extract_concepts
 from modules.rag.image_retriever import retrieve_images
-from modules.rag.audio_generator import generate_script
+from modules.rag.audio_generator import generate_script, generate_scripts_for_chunk
 from modules.rag.model_resolver import resolve_3d_model
 from modules.api.domain_validator import validate_domain
 from modules.rag.pdf_image_extractor import extract_and_upload_pdf_images, upload_raw_image
@@ -45,6 +45,11 @@ def get_redis():
 
 _fallback_cache = {}
 
+_INTERNAL_CONCEPT_FIELDS = {
+    "source_chunk",
+    "source_chunk_index",
+}
+
 def cache_concept(concept_id: str, data: dict):
     """Store a concept in Redis, fallback to local dict."""
     _fallback_cache[concept_id] = data  # Always store locally
@@ -66,6 +71,15 @@ def get_cached_concept(concept_id: str) -> Dict[str, Any]:
         except Exception:
             pass
     return _fallback_cache.get(concept_id)
+
+
+def _public_concept_payload(concept: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip internal pipeline-only fields before caching or returning to the app."""
+    return {
+        key: value
+        for key, value in concept.items()
+        if key not in _INTERNAL_CONCEPT_FIELDS
+    }
 
 # -------------------------------
 # Endpoints
@@ -145,26 +159,61 @@ def process_content():
             if len(flat_concepts) >= 30:
                 break
 
-        # Step 4: Retrieve Images
-        # Wrapped in try/except: image failures should not crash the pipeline.
-        # Concepts without images are still useful for script generation and 3D.
-        logger.info(f"Retrieving images for {len(flat_concepts)} concepts")
-        try:
-            enriched_concepts = retrieve_images(flat_concepts)
-        except Exception as img_err:
-            logger.error(f"Image retrieval pipeline failed: {img_err}")
-            # Return concepts without images rather than crashing
-            enriched_concepts = flat_concepts
-            for c in enriched_concepts:
-                c.setdefault("image_url", None)
-                c.setdefault("image_caption", None)
-                c.setdefault("source", "error")
-        
-        # Cache every final concept back to Redis
-        for c in enriched_concepts:
-            concept_id = c.get("id")
-            if concept_id:
-                cache_concept(concept_id, c)
+        # Step 4: Retrieve Images + Generate Scripts chunk-by-chunk
+        # This keeps narration grounded in the source chunk and ensures scripts
+        # are ready before the app selects a concept.
+        logger.info(f"Retrieving images and scripts for {len(flat_concepts)} concepts")
+        concepts_by_chunk: Dict[int, List[Dict[str, Any]]] = {}
+        for concept in flat_concepts:
+            raw_chunk_index = concept.get("source_chunk_index", -1)
+            try:
+                chunk_index = int(raw_chunk_index)
+            except (TypeError, ValueError):
+                chunk_index = -1
+            concepts_by_chunk.setdefault(chunk_index, []).append(concept)
+
+        enriched_concepts = []
+        for chunk_index, chunk_concepts in concepts_by_chunk.items():
+            logger.info(
+                "Processing chunk %s with %d concept(s)",
+                chunk_index,
+                len(chunk_concepts),
+            )
+
+            chunk_with_images = []
+            for concept in chunk_concepts:
+                title = concept.get("title", "?")
+                try:
+                    enriched = retrieve_images(concept)
+                except Exception as img_err:
+                    logger.error(f"Image retrieval failed for '{title}': {img_err}")
+                    enriched = dict(concept)
+                    enriched.setdefault("image_url", None)
+                    enriched.setdefault("image_caption", None)
+                    enriched.setdefault("source", "error")
+                chunk_with_images.append(enriched)
+
+            chunk_text = next(
+                (concept.get("source_chunk", "") for concept in chunk_with_images if concept.get("source_chunk")),
+                "",
+            )
+            script_map = generate_scripts_for_chunk(chunk_with_images, chunk_text=chunk_text)
+
+            for concept in chunk_with_images:
+                concept_id = concept.get("id")
+                script = script_map.get(concept_id)
+                if not script:
+                    logger.warning(
+                        "Falling back to single-concept script generation for '%s'",
+                        concept.get("title", "?"),
+                    )
+                    script = generate_script(concept)
+                concept["script"] = script
+
+                public_concept = _public_concept_payload(concept)
+                if concept_id:
+                    cache_concept(concept_id, public_concept)
+                enriched_concepts.append(public_concept)
 
         return jsonify({
             "success": True,
