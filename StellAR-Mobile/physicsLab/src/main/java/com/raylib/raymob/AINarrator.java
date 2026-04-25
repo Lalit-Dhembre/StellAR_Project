@@ -18,7 +18,7 @@ import java.util.concurrent.Executors;
 
 public class AINarrator {
     private static final String TAG = "AINarrator";
-    private static final String API_KEY = "";
+    private static final String API_KEY = BuildConfig.GEMINI_API_KEY;
     private static final String API_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemma-3-4b-it:generateContent?key=" + API_KEY;
 
