@@ -43,8 +43,21 @@ It contains detailed step-by-step instructions covering:
 2. Ensure you've documented any new API endpoints or dependencies.
 3. Submit a Pull Request outlining your changes.
 
+## Project Architecture
+### System Architecture
+<img width="915" height="2177" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/3a3d0afb-ca70-4e3c-905f-8852c6a932bd" />
+
+### Content Generation 
+<img width="777" height="3520" alt="mermaid-diagram (1)" src="https://github.com/user-attachments/assets/b5065f04-29d1-43fd-9af9-484486d08383" />
+
+### Physics Engine
+<img width="605" height="2294" alt="mermaid-diagram (2)" src="https://github.com/user-attachments/assets/054cc8b8-288a-4ed2-a7dc-7994050f8972" />
+
+### Chemistry Lab
+<img width="534" height="1704" alt="mermaid-diagram (3)" src="https://github.com/user-attachments/assets/df24592d-14da-49b0-9400-faf9fda6a5b0" />
 
 
+## Working Videos
 https://github.com/user-attachments/assets/9a136fda-9277-4be3-8c41-15ba353cc1c4
 
 
