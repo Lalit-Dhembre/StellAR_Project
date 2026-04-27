@@ -42,3 +42,17 @@ It contains detailed step-by-step instructions covering:
 1. Fork the repository and create your feature branch.
 2. Ensure you've documented any new API endpoints or dependencies.
 3. Submit a Pull Request outlining your changes.
+
+
+
+https://github.com/user-attachments/assets/9a136fda-9277-4be3-8c41-15ba353cc1c4
+
+
+
+https://github.com/user-attachments/assets/599e2b1a-9228-410b-a56e-9c5e7f647ba0
+
+
+
+
+
+
